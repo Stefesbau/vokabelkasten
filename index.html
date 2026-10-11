@@ -500,7 +500,11 @@ async function prepImage(file, opts = {}){
     const id = g.getImageData(0, 0, c.width, c.height), px = id.data;
     const gray = new Uint8ClampedArray(px.length / 4), hist = new Uint32Array(256);
     for (let i = 0, j = 0; i < px.length; i += 4, j++) {
-      const v = Math.min(px[i], px[i+1], px[i+2]) * 0.75 + (px[i]*299 + px[i+1]*587 + px[i+2]*114) / 1000 * 0.25;
+      const r = px[i], gg = px[i+1], b = px[i+2], lum = (r*299 + gg*587 + b*114) / 1000;
+      // lum: normal; max: coloured marker backgrounds turn white; min: coloured ink turns dark
+      const v = opts.gray === "max" ? Math.max(r, gg, b) * 0.6 + lum * 0.4
+              : opts.gray === "min" ? Math.min(r, gg, b) * 0.75 + lum * 0.25
+              : lum;
       gray[j] = v; hist[gray[j]]++;
     }
     // stretch contrast between the 2nd and 98th percentile
@@ -524,7 +528,7 @@ async function recognize(){
   const n = d.files.length; let page = 0;
   ocrProgress = m => {
     if (d.cancelled) return;
-    if (m.status === "recognizing text") setProgress(n > 1 ? `Seite ${page+1} von ${n} wird gelesen …` : "Text wird gelesen …", (page + (m.progress||0)) / n);
+    if (m.status === "recognizing text") { const l = $("#ocrLabel"); if (l && !/Versuch/.test(l.textContent)) setProgress(n > 1 ? `Seite ${page+1} von ${n} wird gelesen …` : "Text wird gelesen …", (page + (m.progress||0)) / n); }
     else if (/load|initializ/i.test(m.status||"")) setProgress("Sprachdaten werden geladen (nur beim ersten Mal, kann etwas dauern) …", m.progress||0);
   };
   try {
@@ -534,20 +538,28 @@ async function recognize(){
     for (page = 0; page < n; page++) {
       if (d.cancelled) break;
       setProgress(n > 1 ? `Seite ${page+1} von ${n} wird vorbereitet …` : "Foto wird vorbereitet …", page / n);
-      let res = null, rawText = "";
-      // 1st try: normal; 2nd try: enlarged picture, text read as one block
-      for (const attempt of [{}, {upscale:true, psm:"6"}]) {
+      let res = null, rawText = "", bestScore = -1e9;
+      const quality = r => {
+        const full = r.pairs.filter(p => p.fx && p.de).length;
+        const shaky = r.pairs.filter(p => /\s\?$/.test(p.fx) || /\s\?$/.test(p.de) || !p.fx || !p.de).length;
+        return full * 2 - shaky * 1.5;
+      };
+      // several ways to prepare the picture; the result with the most clean pairs wins
+      const attempts = [{gray:"lum"}, {gray:"max"}, {gray:"min", upscale:true, psm:"6"}];
+      for (let ai = 0; ai < attempts.length; ai++) {
+        const attempt = attempts[ai];
         if (d.cancelled) break;
+        if (ai === 2 && res && res.pairs.length >= 3 && quality(res) >= res.pairs.length * 1.6) break;
+        if (ai > 0) setProgress(n > 1 ? `Seite ${page+1} von ${n}: Versuch ${ai+1} von 3 …` : `Versuch ${ai+1} von 3 …`, (page + ai / 3) / n);
         const canvas = await prepImage(d.files[page].blob, attempt);
         await worker.setParameters({tessedit_pageseg_mode: attempt.psm || "3"});
         const { data } = await worker.recognize(canvas);
         const words = (data.words || []).map(w => ({text:w.text, conf:w.confidence, x0:w.bbox.x0, y0:w.bbox.y0, x1:w.bbox.x1, y1:w.bbox.y1}));
         const angle = VkPair.tiltFromBaselines((data.lines || []).map(l => l.baseline));
         const r = VkPair.pairFromWords(words, {angle});
-        if (!res || r.pairs.length > res.pairs.length) res = r;
+        const q = quality(r);
+        if (!res || q > bestScore) { res = r; bestScore = q; }
         if ((data.text || "").trim().length > rawText.length) rawText = (data.text || "").trim();
-        if (res.pairs.length >= 3) break;
-        setProgress(n > 1 ? `Seite ${page+1} von ${n}: zweiter Versuch …` : "Zweiter Versuch mit vergrößertem Bild …", page / n);
       }
       if (!res.pairs.length && rawText) raw.push(rawText);
       all.push(...res.pairs);
