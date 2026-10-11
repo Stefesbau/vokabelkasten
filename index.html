@@ -238,9 +238,10 @@ function b64uDecode(s){
   for (let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
   return new TextDecoder().decode(out);
 }
-function checkImport(){
-  const m = location.hash.match(/^#import=([A-Za-z0-9_-]+)/);
-  if (!m) return;
+function checkImport(text){
+  const fromPaste = typeof text === "string";
+  const m = (fromPaste ? text : location.hash).match(/#import=([A-Za-z0-9_-]+)/);
+  if (!m) { if (fromPaste) { S.draft && (S.draft.error = "Das ist kein Vokabelkasten-Link. Kopiere den ganzen Link aus der Nachricht."); renderMain(); } return; }
   try {
     const o = JSON.parse(b64uDecode(m[1]));
     const pairs = (Array.isArray(o.p) ? o.p : []).filter(x => Array.isArray(x) && x[0] && x[1])
@@ -248,7 +249,7 @@ function checkImport(){
     if (!pairs.length) throw new Error("leer");
     S.pendingImport = {title:String(o.t||"").slice(0,80), lang: LANGS[o.l] ? o.l : "en", pairs};
   } catch { S.pendingImport = {error:true}; }
-  try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+  if (!fromPaste) { try { history.replaceState(null, "", location.pathname + location.search); } catch {} }
   go("import");
 }
 function viewImport(){
@@ -265,6 +266,7 @@ function viewImport(){
     h("div",{class:"heft","aria-hidden":"true"},
       im.pairs.slice(0,6).map(p => [h("div",null,p.fx), h("div",null,p.de)]),
       im.pairs.length>6 ? h("div",{class:"more"}, `+ ${im.pairs.length-6} weitere`) : null),
+    !standalone ? h("p",{class:"note"},"Hast du den Vokabelkasten auf dem Home-Bildschirm? Dann kopiere den Link aus der Nachricht und füge ihn dort unter „Neue Liste“ → „Liste aus Link übernehmen“ ein. Nur so landet die Liste in deiner App.") : null,
     k ? h("div",{class:"row"},
           h("button",{class:"btn hl grow",onclick:async()=>{
             await Store.putList({id:uid(), profileId:k.id, title:im.title || `${L.name} ${fmtDate(Date.now())}`, lang:im.lang,
@@ -426,6 +428,13 @@ function viewNew(){
           h("button",{class:"btn ghost",onclick:()=>{d.cancelled=true;stopOcr();}},"Abbrechen"))
       : h("button",{class:"btn hl",disabled:!d.files.length,onclick:recognize},"Vokabeln erkennen"),
     d.error ? h("p",{class:"note bad"},d.error) : null,
+    h("details",null,
+      h("summary",{class:"small",style:{cursor:"pointer",minHeight:"36px"}},"Liste aus Link übernehmen"),
+      h("div",{class:"field",style:{marginTop:"10px"}},
+        h("span",{class:"small muted"},"Link aus der Nachricht kopieren und hier einfügen."),
+        h("input",{id:"dLink",placeholder:"https://stefesbau.github.io/vokabelkasten/#import=…",autocomplete:"off",autocapitalize:"off",
+          onpaste:e=>{ const t=(e.clipboardData||window.clipboardData)?.getData("text"); if (t) { e.preventDefault(); e.target.value=t; checkImport(t); } }}),
+        h("button",{class:"btn ghost",onclick:()=>checkImport($("#dLink").value)},"Übernehmen"))),
     h("details",null,
       h("summary",{class:"small",style:{cursor:"pointer",minHeight:"36px"}},"Oder als Text einfügen"),
       h("div",{class:"field",style:{marginTop:"10px"}},
