@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Vokabelkasten</title>
+<meta name="description" content="Vokabelzettel fotografieren und Vokabeln schriftlich üben.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Vokabeln">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f6f8fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1626" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* Layout: one narrow column like a Vokabelheft page; lists drawn as two-column ruled pages with a red middle line, practice as an index card. */
+:root{
+  --paper:#f6f8fb; --sheet:#ffffff; --ink:#18233a; --ink-soft:#56627a; --rule:#d7e1ee;
+  --margin:#d9473b; --marker:#ffd84a; --marker-ink:#3b2f00; --blue:#2f5bd3;
+  --ok:#1f8a4c; --ok-bg:#e3f4ea; --bad:#c23a2f; --bad-bg:#fbe8e6; --warn-bg:#fff4cc;
+  --shadow:0 1px 0 rgba(24,35,58,.06),0 6px 18px -10px rgba(24,35,58,.25);
+  --f-display:"Bricolage Grotesque",ui-rounded,"Segoe UI",system-ui,sans-serif;
+  --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0f1626; --sheet:#172036; --ink:#e8edf7; --ink-soft:#9aa7c0; --rule:#283552;
+  --margin:#ff7a6b; --marker:#ffd84a; --marker-ink:#3b2f00; --blue:#86a6ff;
+  --ok:#5fd394; --ok-bg:#163527; --bad:#ff8a7c; --bad-bg:#3a1c1b; --warn-bg:#3a3214;
+  --shadow:0 1px 0 rgba(0,0,0,.3),0 8px 22px -12px rgba(0,0,0,.7); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0f1626; --sheet:#172036; --ink:#e8edf7; --ink-soft:#9aa7c0; --rule:#283552;
+  --margin:#ff7a6b; --marker:#ffd84a; --marker-ink:#3b2f00; --blue:#86a6ff;
+  --ok:#5fd394; --ok-bg:#163527; --bad:#ff8a7c; --bad-bg:#3a1c1b; --warn-bg:#3a3214;
+  --shadow:0 1px 0 rgba(0,0,0,.3),0 8px 22px -12px rgba(0,0,0,.7); color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font:16px/1.5 var(--f-body)}
+.wrap{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:1.5rem;font-weight:800}
+h2{font-size:1.25rem;font-weight:700}
+h3{font-size:1.05rem;font-weight:700}
+p{margin:0}
+.muted{color:var(--ink-soft)}
+.small{font-size:.875rem}
+.label{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--ink-soft)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+
+/* header */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:8px}
+.brand mark{background:var(--marker);color:var(--marker-ink);padding:0 .25em;border-radius:3px}
+.kids{display:flex;gap:8px;flex-wrap:wrap}
+.kid{border:2px solid var(--rule);background:var(--sheet);border-radius:999px;padding:6px 14px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px}
+.kid .dot{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.kid[aria-pressed="true"]{border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c)}
+.kid.add{color:var(--ink-soft);font-weight:400}
+
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--rule)}
+.tab{background:none;border:0;padding:10px 14px;font-weight:700;color:var(--ink-soft);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tab[aria-selected="true"]{color:var(--ink);border-color:var(--margin)}
+
+/* buttons */
+.btn{border:0;border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer;background:var(--ink);color:var(--paper);display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px}
+.btn.hl{background:var(--marker);color:var(--marker-ink)}
+.btn.ghost{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 2px var(--rule)}
+.btn.danger{background:transparent;color:var(--bad);box-shadow:inset 0 0 0 2px var(--bad)}
+.btn[disabled]{opacity:.5;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.grow{flex:1 1 auto;min-width:0}
+
+/* sheet / vokabelheft */
+.sheet{background:var(--sheet);border-radius:14px;box-shadow:var(--shadow);padding:18px;display:flex;flex-direction:column;gap:14px}
+.heft{display:grid;grid-template-columns:1fr 1fr;position:relative;background:repeating-linear-gradient(to bottom,transparent 0 35px,var(--rule) 35px 36px);border-top:1px solid var(--rule)}
+.heft::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;background:var(--margin);opacity:.75}
+.heft > div{padding:0 10px;height:36px;line-height:36px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.heft .more{grid-column:1/-1;color:var(--ink-soft);font-size:.875rem;text-align:center}
+
+.list-card{display:flex;flex-direction:column;gap:12px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:700;padding:2px 10px;border-radius:999px;background:var(--paper);color:var(--ink-soft)}
+.meter{height:8px;border-radius:99px;background:var(--rule);overflow:hidden;display:flex}
+.meter i{display:block;height:100%}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.8rem;color:var(--ink-soft)}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.nums{font-variant-numeric:tabular-nums}
+
+/* forms */
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field input,.field select,.field textarea{border:2px solid var(--rule);background:var(--sheet);border-radius:10px;padding:10px 12px;min-height:44px;width:100%}
+textarea{resize:vertical;min-height:120px}
+.drop{border:2px dashed var(--rule);border-radius:14px;padding:22px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center;cursor:pointer;background:var(--paper)}
+.drop.over{border-color:var(--blue)}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.thumbs img{width:76px;height:96px;object-fit:cover;border-radius:6px;box-shadow:var(--shadow)}
+.note{border-radius:10px;padding:10px 14px;background:var(--warn-bg);font-size:.9rem}
+.note.bad{background:var(--bad-bg);color:var(--bad)}
+
+/* review table */
+.edit{display:flex;flex-direction:column}
+.edit-row{display:grid;grid-template-columns:1fr 1fr 40px;position:relative;border-bottom:1px solid var(--rule)}
+.edit-row::before{content:"";position:absolute;top:0;bottom:0;left:calc((100% - 40px)/2);width:2px;background:var(--margin);opacity:.7}
+.edit-row input{border:0;background:transparent;padding:10px 10px;min-height:44px;min-width:0;width:100%}
+.edit-row input:focus{background:var(--paper);outline:none;box-shadow:inset 0 -2px 0 var(--blue)}
+.edit-row.head{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--ink-soft)}
+.edit-row.head span{padding:6px 10px}
+.x{border:0;background:none;color:var(--ink-soft);cursor:pointer;font-size:1.2rem;min-height:44px}
+.flag input{color:var(--bad)}
+
+/* practice card */
+.card{background:var(--sheet);border-radius:6px 6px 14px 14px;box-shadow:var(--shadow);position:relative;overflow:hidden;padding:44px 20px 22px;display:flex;flex-direction:column;gap:16px;
+  background-image:linear-gradient(var(--margin),var(--margin)),repeating-linear-gradient(to bottom,transparent 0 31px,var(--rule) 31px 32px);
+  background-size:100% 2px,100% 100%;background-position:0 30px,0 0;background-repeat:no-repeat,repeat}
+.card .dir{position:absolute;top:6px;left:20px;right:20px;display:flex;justify-content:space-between}
+.prompt{font-family:var(--f-display);font-weight:700;font-size:clamp(1.6rem,6vw,2.4rem);line-height:1.15;text-align:center;padding:10px 0;overflow-wrap:anywhere;text-wrap:balance}
+.answer-in{border:2px solid var(--rule);border-radius:12px;padding:14px;font-size:1.25rem;width:100%;background:var(--paper);text-align:center}
+.answer-in.ok{border-color:var(--ok);background:var(--ok-bg)}
+.answer-in.bad{border-color:var(--bad);background:var(--bad-bg)}
+.feedback{border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;text-align:center}
+.feedback.ok{background:var(--ok-bg);color:var(--ok)}
+.feedback.bad{background:var(--bad-bg);color:var(--bad)}
+.feedback .sol{font-size:1.2rem;font-weight:700;color:var(--ink)}
+.chars{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.chars button{min-width:40px;min-height:40px;border-radius:8px;border:2px solid var(--rule);background:var(--sheet);cursor:pointer;font-size:1.05rem}
+.speak{border:0;background:none;cursor:pointer;color:var(--blue);font-weight:700;min-height:36px}
+.progress{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.bar{flex:1;height:10px;border-radius:99px;background:var(--rule);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok);transition:width .3s}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{border:2px solid var(--rule);background:var(--sheet);border-radius:10px;padding:8px 12px;cursor:pointer;min-height:44px;font-weight:700}
+.seg button[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.empty{text-align:center;padding:28px 18px;display:flex;flex-direction:column;gap:12px;align-items:center}
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat div{background:var(--paper);border-radius:10px;padding:12px;text-align:center}
+.stat strong{display:block;font-family:var(--f-display);font-size:1.6rem}
+.spin{width:18px;height:18px;border:3px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp 0.8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}.bar i{transition:none}}
+@media (max-width:460px){.heft > div{padding:0 6px;font-size:.92rem}.card{padding-inline:14px}}
+
+html,body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+body{padding-top:calc(12px + env(safe-area-inset-top,0px));padding-bottom:calc(48px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));-webkit-text-size-adjust:100%}
+input,select,textarea{font-size:16px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><h1>Vokabel<mark>kasten</mark></h1></div>
+    <div class="kids" id="kids"></div>
+  </header>
+  <nav class="tabs" role="tablist" id="tabs">
+    <button class="tab" role="tab" id="tab-lists" data-view="lists">Meine Listen</button>
+    <button class="tab" role="tab" id="tab-new" data-view="new">Neue Liste</button>
+  </nav>
+  <main id="main"></main>
+  <p class="muted small" id="storeNote"></p>
+</div>
+
+<script src="pair.js"></script>
+<script>
+(() => {
+const LANGS = {
+  en:{name:"Englisch", tts:"en-GB", chars:[]},
+  es:{name:"Spanisch", tts:"es-ES", chars:["á","é","í","ó","ú","ñ","ü","¿","¡"]},
+  fr:{name:"Französisch", tts:"fr-FR", chars:["à","â","ç","é","è","ê","ë","î","ï","ô","ù","û","œ"]},
+  la:{name:"Latein", tts:null, chars:["ā","ē","ī","ō","ū"]},
+};
+const KID_COLORS = ["#2f5bd3","#d9473b","#1f8a4c","#a24fd0","#d98a1b"];
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2));
+const $ = (s, r=document) => r.querySelector(s);
+function h(tag, attrs, ...kids){
+  const el = document.createElement(tag);
+  if (attrs) for (const [k,v] of Object.entries(attrs)){
+    if (v == null || v === false) continue;
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "style" && typeof v === "object") { for (const [sk, sv] of Object.entries(v)) { if (sk.startsWith("--")) el.style.setProperty(sk, sv); else el.style[sk] = sv; } }
+    else if (k === "class") el.className = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat(Infinity)) if (c != null && c !== false) el.append(c.nodeType ? c : String(c));
+  return el;
+}
+const ls = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+/* ---------- state ---------- */
+const S = {
+  profiles: [], lists: [],
+  kid: ls.get("vk-kid", null),
+  view: "lists",
+  db: null, sample: null, imgLimits: null, loaded: false,
+  draft: null,      // list being created/edited
+  session: null,    // practice session
+  confirmDel: null, addingKid: false,
+};
+
+/* ---------- storage: this device ---------- */
+const standalone = (() => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch { return false; } })();
+const Store = {
+  async init(){
+    const d = ls.get("vk-data", {profiles:[], lists:[]});
+    S.profiles = Array.isArray(d.profiles) ? d.profiles : [];
+    S.lists = Array.isArray(d.lists) ? d.lists : [];
+    S.loaded = true;
+    try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
+    $("#storeNote").textContent = standalone
+      ? "Deine Listen sind auf diesem Gerät gespeichert."
+      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät.";
+    afterData();
+    checkImport();
+  },
+  save(){ ls.set("vk-data", {profiles:S.profiles, lists:S.lists}); },
+  async putProfile(p){ upsert(S.profiles, p); this.save(); },
+  async delProfile(id){
+    S.profiles = S.profiles.filter(p => p.id !== id);
+    S.lists = S.lists.filter(l => l.profileId !== id);
+    this.save();
+  },
+  async putList(l){ upsert(S.lists, l); this.save(); },
+  async delList(id){ S.lists = S.lists.filter(l => l.id !== id); this.save(); },
+};
+
+/* ---------- import from a link (#import=...) ---------- */
+function b64uDecode(s){
+  s = s.replace(/-/g,"+").replace(/_/g,"/"); while (s.length % 4) s += "=";
+  const bin = atob(s); const out = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(out);
+}
+function checkImport(){
+  const m = location.hash.match(/^#import=([A-Za-z0-9_-]+)/);
+  if (!m) return;
+  try {
+    const o = JSON.parse(b64uDecode(m[1]));
+    const pairs = (Array.isArray(o.p) ? o.p : []).filter(x => Array.isArray(x) && x[0] && x[1])
+      .map(([fx,de]) => ({id:uid(), fx:String(fx).slice(0,200), de:String(de).slice(0,200), box:0}));
+    if (!pairs.length) throw new Error("leer");
+    S.pendingImport = {title:String(o.t||"").slice(0,80), lang: LANGS[o.l] ? o.l : "en", pairs};
+  } catch { S.pendingImport = {error:true}; }
+  try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+  go("import");
+}
+function viewImport(){
+  const im = S.pendingImport;
+  if (!im) { S.view = "lists"; return viewLists(); }
+  if (im.error) return h("div",{class:"sheet empty"},
+    h("h2",null,"Dieser Link funktioniert nicht"),
+    h("p",{class:"muted"},"Der Link ist unvollständig. Bitte lass ihn dir noch einmal schicken."),
+    h("button",{class:"btn hl",onclick:()=>{S.pendingImport=null;go("lists");}},"Zu meinen Listen"));
+  const k = curKid();
+  const L = LANGS[im.lang];
+  return h("div",{class:"sheet"},
+    h("div",null,h("p",{class:"label"},`Neue Liste · ${L.name} · ${im.pairs.length} Vokabeln`),h("h2",null,im.title || "Vokabelliste")),
+    h("div",{class:"heft","aria-hidden":"true"},
+      im.pairs.slice(0,6).map(p => [h("div",null,p.fx), h("div",null,p.de)]),
+      im.pairs.length>6 ? h("div",{class:"more"}, `+ ${im.pairs.length-6} weitere`) : null),
+    k ? h("div",{class:"row"},
+          h("button",{class:"btn hl grow",onclick:async()=>{
+            await Store.putList({id:uid(), profileId:k.id, title:im.title || `${L.name} ${fmtDate(Date.now())}`, lang:im.lang,
+              pairs:im.pairs, created:Date.now(), lastPracticed:null, sessions:0});
+            S.pendingImport = null; go("lists");
+          }},`Für ${k.name} speichern`),
+          h("button",{class:"btn ghost",onclick:()=>{S.pendingImport=null;go("lists");}},"Verwerfen"))
+      : h("div",{class:"row"},
+          h("p",{class:"grow"},"Leg zuerst oben deinen Namen an, dann kannst du die Liste speichern."),
+          h("button",{class:"btn hl",onclick:()=>{S.addingKid=true;renderKids();}},"Namen anlegen"))
+  );
+}
+
+function strip(o){ const {id, ...rest} = o; return JSON.parse(JSON.stringify(rest)); }
+function upsert(arr, item){ const i = arr.findIndex(x => x.id === item.id); if (i < 0) arr.push(item); else arr[i] = item; }
+function onDbErr(e){ $("#storeNote").textContent = "Speicher gerade nicht erreichbar. Lade die Seite neu."; console.warn(e); }
+function afterData(){
+  if (S.kid && !S.profiles.some(p => p.id === S.kid)) S.kid = null;
+  if (!S.kid && S.profiles.length) setKid(S.profiles[0].id, false);
+  renderKids();
+  if (S.view === "lists" || S.view === "import") renderMain();
+}
+function setKid(id, rerender=true){ S.kid = id; ls.set("vk-kid", id); if (rerender){ renderKids(); if (S.view==="lists"||S.view==="new"||S.view==="import") renderMain(); } }
+const kidOf = id => S.profiles.find(p => p.id === id);
+const curKid = () => kidOf(S.kid);
+
+/* ---------- header ---------- */
+function renderKids(){
+  const box = $("#kids"); box.replaceChildren();
+  S.profiles.forEach(p => box.append(
+    h("button", {class:"kid", "aria-pressed": String(p.id===S.kid), style:{"--c":p.color}, onclick:()=>setKid(p.id)},
+      h("span",{class:"dot"}), p.name)));
+  if (S.addingKid) {
+    const inp = h("input",{id:"newKid", placeholder:"Name", "aria-label":"Name", style:{border:"2px solid var(--rule)",borderRadius:"999px",padding:"6px 12px",width:"9em",background:"var(--sheet)"},
+      onkeydown:e=>{ if(e.key==="Enter") addKid(inp.value); if(e.key==="Escape"){S.addingKid=false;renderKids();} }});
+    box.append(inp, h("button",{class:"kid", onclick:()=>addKid(inp.value)},"Anlegen"));
+    setTimeout(()=>inp.focus());
+  } else if (S.loaded) {
+    box.append(h("button",{class:"kid add", onclick:()=>{S.addingKid=true;renderKids();}}, S.profiles.length ? "+ Name" : "+ Namen eintragen"));
+  }
+}
+async function addKid(name){
+  name = (name||"").trim(); if (!name) return;
+  const p = {id:uid(), name, color:KID_COLORS[S.profiles.length % KID_COLORS.length], created:Date.now()};
+  S.addingKid = false;
+  await Store.putProfile(p); setKid(p.id);
+}
+
+$("#tabs").addEventListener("click", e => {
+  const b = e.target.closest(".tab"); if (!b) return;
+  if (b.dataset.view === "new") startDraft(); else go("lists");
+});
+function go(view){
+  S.view = view;
+  document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.view === (view==="review"?"new":view))));
+  renderMain(); window.scrollTo({top:0});
+}
+
+/* ---------- main router ---------- */
+function renderMain(){
+  const m = $("#main");
+  const v = S.view;
+  m.replaceChildren(
+    v==="lists" ? viewLists() :
+    v==="new" ? viewNew() :
+    v==="review" ? viewReview() :
+    v==="setup" ? viewSetup() :
+    v==="practice" ? viewPractice() :
+    v==="done" ? viewDone() :
+    v==="import" ? viewImport() : "");
+}
+
+/* ---------- lists ---------- */
+function mastery(l){
+  const n = l.pairs.length || 1; let sure=0, mid=0;
+  l.pairs.forEach(p => { if ((p.box||0) >= 3) sure++; else if ((p.box||0) >= 1) mid++; });
+  return {sure, mid, todo:l.pairs.length-sure-mid, n};
+}
+function viewLists(){
+  if (!S.loaded) return h("div",{class:"sheet empty"}, h("span",{class:"spin"}), h("p",{class:"muted"},"Listen werden geladen …"));
+  const k = curKid();
+  if (!k) return h("div",{class:"sheet empty"},
+    h("h2",null,"Wer lernt hier?"),
+    h("p",{class:"muted"},"Trag deinen Namen ein. Nutzen mehrere die App auf einem Gerät, bekommt jeder seinen eigenen Bereich."),
+    h("button",{class:"btn hl", onclick:()=>{S.addingKid=true;renderKids();}},"Namen eintragen"));
+  const mine = S.lists.filter(l => l.profileId === k.id).sort((a,b)=>(b.created||0)-(a.created||0));
+  if (!mine.length) return h("div",{class:"sheet empty"},
+    h("h2",null,`Noch keine Listen für ${k.name}`),
+    h("p",{class:"muted"},"Fotografiere den nächsten Vokabelzettel. Die Paare werden automatisch erkannt und gegenübergestellt."),
+    h("button",{class:"btn hl", onclick:startDraft},"Vokabelzettel einscannen"));
+  return h("div",{style:{display:"flex",flexDirection:"column",gap:"16px"}}, mine.map(listCard));
+}
+function listCard(l){
+  const m = mastery(l), lang = LANGS[l.lang] || LANGS.en;
+  const preview = l.pairs.slice(0,4);
+  const confirming = S.confirmDel === l.id;
+  return h("article",{class:"sheet list-card"},
+    h("div",{class:"row"},
+      h("div",{class:"grow"}, h("h3",null,l.title||"Ohne Titel"),
+        h("p",{class:"small muted nums"}, `${l.pairs.length} Vokabeln`, l.lastPracticed ? ` · zuletzt geübt ${fmtDate(l.lastPracticed)}` : " · noch nicht geübt")),
+      h("span",{class:"chip"}, lang.name)),
+    h("div",{class:"heft","aria-hidden":"true"},
+      preview.map(p => [h("div",null,p.fx), h("div",null,p.de)]),
+      l.pairs.length>4 ? h("div",{class:"more"}, `+ ${l.pairs.length-4} weitere`) : null),
+    h("div",{class:"meter",role:"img","aria-label":`${m.sure} sicher, ${m.mid} im Lernen, ${m.todo} offen`},
+      h("i",{style:{width:`${m.sure/m.n*100}%`,background:"var(--ok)"}}),
+      h("i",{style:{width:`${m.mid/m.n*100}%`,background:"var(--marker)"}})),
+    h("div",{class:"legend nums"},
+      h("span",null,h("b",{style:{background:"var(--ok)"}}),`${m.sure} sicher`),
+      h("span",null,h("b",{style:{background:"var(--marker)"}}),`${m.mid} im Lernen`),
+      h("span",null,h("b",{style:{background:"var(--rule)"}}),`${m.todo} offen`)),
+    confirming
+      ? h("div",{class:"row"}, h("p",{class:"grow"},"Liste wirklich löschen?"),
+          h("button",{class:"btn danger",onclick:async()=>{S.confirmDel=null;await Store.delList(l.id);renderMain();}},"Löschen"),
+          h("button",{class:"btn ghost",onclick:()=>{S.confirmDel=null;renderMain();}},"Abbrechen"))
+      : h("div",{class:"row"},
+          h("button",{class:"btn hl grow",onclick:()=>openSetup(l.id)},"Üben"),
+          h("button",{class:"btn ghost",onclick:()=>editList(l)},"Bearbeiten"),
+          h("button",{class:"btn ghost","aria-label":"Liste löschen",onclick:()=>{S.confirmDel=l.id;renderMain();}},"Löschen"))
+  );
+}
+function fmtDate(t){ const d=new Date(t); return d.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"}); }
+
+/* ---------- new list (scan / paste) ---------- */
+function startDraft(){
+  if (!curKid()) { go("lists"); S.addingKid=true; renderKids(); return; }
+  const last = S.lists.filter(l=>l.profileId===S.kid).sort((a,b)=>(b.created||0)-(a.created||0))[0];
+  S.draft = {id:null, title:"", lang:last?.lang || "en", files:[], text:"", busy:false, error:"", pairs:[]};
+  go("new");
+}
+function viewNew(){
+  const d = S.draft; if (!d) { S.view="lists"; return viewLists(); }
+  const k = curKid();
+  const fileIn = h("input",{type:"file",id:"fileIn",accept:"image/*",multiple:true,hidden:true,
+    onchange:e=>{ addFiles(e.target.files); e.target.value=""; }});
+  const drop = h("div",{class:"drop",tabindex:"0",role:"button","aria-label":"Fotos auswählen",
+      onclick:()=>{ if(!d.busy) fileIn.click(); }, onkeydown:e=>{if((e.key==="Enter"||e.key===" ")&&!d.busy){e.preventDefault();fileIn.click();}},
+      ondragover:e=>{e.preventDefault();drop.classList.add("over");}, ondragleave:()=>drop.classList.remove("over"),
+      ondrop:e=>{e.preventDefault();drop.classList.remove("over");addFiles(e.dataTransfer.files);}},
+    d.files.length
+      ? h("div",{class:"thumbs"}, d.files.map(f=>h("img",{src:f.url,alt:"Foto des Vokabelzettels"})))
+      : h("strong",null,"Vokabelzettel fotografieren"),
+    h("span",{class:"small muted"}, d.files.length ? "Tippen, um weitere Seiten hinzuzufügen" : "Kamera oder Fotos · auch mehrere Seiten"),
+    fileIn);
+  return h("div",{class:"sheet"},
+    h("div",null,h("p",{class:"label"},`Neue Liste für ${k?.name||""}`),h("h2",null,"Vokabelzettel einlesen")),
+    h("div",{class:"row"},
+      h("label",{class:"field grow"},h("span",{class:"label"},"Titel"),
+        h("input",{id:"dTitle",value:d.title,placeholder:"z. B. Unit 3 – Test am Freitag",oninput:e=>d.title=e.target.value})),
+      h("label",{class:"field"},h("span",{class:"label"},"Sprache"),
+        h("select",{id:"dLang",onchange:e=>d.lang=e.target.value,disabled:d.busy},
+          Object.entries(LANGS).map(([c,L])=>h("option",{value:c,selected:c===d.lang},L.name))))),
+    drop,
+    h("p",{class:"small muted"},"Tipp: Blatt gerade und von oben fotografieren, gutes Licht, nur die Vokabelliste im Bild. Gedruckte Listen klappen am besten."),
+    d.busy
+      ? h("div",{class:"field"},
+          h("span",{class:"small",id:"ocrLabel"}, d.progress?.label || "Wird vorbereitet …"),
+          h("div",{class:"bar"},h("i",{id:"ocrBar",style:{width:Math.round((d.progress?.pct||0)*100)+"%"}})),
+          h("button",{class:"btn ghost",onclick:()=>{d.cancelled=true;stopOcr();}},"Abbrechen"))
+      : h("button",{class:"btn hl",disabled:!d.files.length,onclick:recognize},"Vokabeln erkennen"),
+    d.error ? h("p",{class:"note bad"},d.error) : null,
+    h("details",null,
+      h("summary",{class:"small",style:{cursor:"pointer",minHeight:"36px"}},"Oder als Text einfügen"),
+      h("div",{class:"field",style:{marginTop:"10px"}},
+        h("span",{class:"small muted"},"Eine Vokabel pro Zeile, getrennt mit  –  oder  =  oder Tab, z. B. „to arrive – ankommen“."),
+        h("textarea",{id:"dText",oninput:e=>d.text=e.target.value},d.text),
+        h("button",{class:"btn ghost",onclick:fromText},"Aus Text übernehmen")))
+  );
+}
+function addFiles(list){
+  const d = S.draft; const max = 6;
+  const arr = Array.from(list||[]).filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|heic|webp)$/i.test(f.name));
+  for (const f of arr) { if (d.files.length >= max) break; d.files.push({blob:f, url:URL.createObjectURL(f)}); }
+  d.error = arr.length && d.files.length >= max ? `Höchstens ${max} Fotos auf einmal.` : "";
+  renderMain();
+}
+
+/* ---------- text recognition on the device (Tesseract) ---------- */
+const OCR_CODES = {en:"eng", es:"spa", fr:"fra", la:"lat"};
+let ocrWorker = null, ocrLang = null, ocrProgress = null, tessLoading = null;
+function loadTesseract(){
+  if (window.Tesseract) return Promise.resolve();
+  if (!tessLoading) tessLoading = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+    s.onload = res; s.onerror = () => { tessLoading = null; rej(new Error("load")); };
+    document.head.append(s);
+  });
+  return tessLoading;
+}
+async function getWorker(lang){
+  if (ocrWorker && ocrLang === lang) return ocrWorker;
+  if (ocrWorker) { try { await ocrWorker.terminate(); } catch {} ocrWorker = null; }
+  ocrWorker = await Tesseract.createWorker([OCR_CODES[lang] || "eng", "deu"], 1, {
+    logger: m => ocrProgress && ocrProgress(m),
+  });
+  ocrLang = lang;
+  return ocrWorker;
+}
+function stopOcr(){
+  const w = ocrWorker; ocrWorker = null; ocrLang = null;
+  if (w) w.terminate().catch(()=>{});
+}
+function setProgress(label, pct){
+  const d = S.draft; if (!d) return;
+  d.progress = {label, pct};
+  const l = $("#ocrLabel"), b = $("#ocrBar");
+  if (l) l.textContent = label;
+  if (b) b.style.width = Math.round((pct||0)*100) + "%";
+}
+async function prepImage(file){
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image(); img.src = url; await img.decode();
+    const max = 2400, sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+    const g = c.getContext("2d", {willReadFrequently:true});
+    g.drawImage(img, 0, 0, c.width, c.height);
+    // grayscale + contrast stretch
+    const id = g.getImageData(0, 0, c.width, c.height), px = id.data;
+    let lo = 255, hi = 0; const lum = new Uint8ClampedArray(px.length / 4);
+    for (let i = 0, j = 0; i < px.length; i += 4, j++) {
+      const v = (px[i]*299 + px[i+1]*587 + px[i+2]*114) / 1000; lum[j] = v;
+      if (j % 16 === 0) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    }
+    const span = Math.max(40, hi - lo);
+    for (let i = 0, j = 0; i < px.length; i += 4, j++) {
+      const v = Math.max(0, Math.min(255, (lum[j] - lo) * 255 / span));
+      px[i] = px[i+1] = px[i+2] = v;
+    }
+    g.putImageData(id, 0, 0);
+    return c;
+  } finally { URL.revokeObjectURL(url); }
+}
+async function recognize(){
+  const d = S.draft; if (!d.files.length || d.busy) return;
+  d.busy = true; d.cancelled = false; d.error = ""; d.note = "";
+  d.progress = {label:"Texterkennung wird geladen …", pct:0};
+  renderMain();
+  const n = d.files.length; let page = 0;
+  ocrProgress = m => {
+    if (d.cancelled) return;
+    if (m.status === "recognizing text") setProgress(n > 1 ? `Seite ${page+1} von ${n} wird gelesen …` : "Text wird gelesen …", (page + (m.progress||0)) / n);
+    else if (/load|initializ/i.test(m.status||"")) setProgress("Sprachdaten werden geladen (nur beim ersten Mal, kann etwas dauern) …", m.progress||0);
+  };
+  try {
+    await loadTesseract();
+    const worker = await getWorker(d.lang);
+    const all = []; const notes = new Set(); let title = "";
+    for (page = 0; page < n; page++) {
+      if (d.cancelled) break;
+      setProgress(n > 1 ? `Seite ${page+1} von ${n} wird vorbereitet …` : "Foto wird vorbereitet …", page / n);
+      const canvas = await prepImage(d.files[page].blob);
+      const { data } = await worker.recognize(canvas);
+      const words = (data.words || []).map(w => ({text:w.text, conf:w.confidence, x0:w.bbox.x0, y0:w.bbox.y0, x1:w.bbox.x1, y1:w.bbox.y1}));
+      const angle = VkPair.tiltFromBaselines((data.lines || []).map(l => l.baseline));
+      const res = VkPair.pairFromWords(words, {angle});
+      all.push(...res.pairs);
+      if (!title && res.title) title = res.title;
+      if (res.note) notes.add(res.note);
+      if (res.swapped) notes.add("Die deutsche Spalte stand links und wurde nach rechts sortiert.");
+    }
+    if (d.cancelled) { d.busy = false; renderMain(); return; }
+    if (!all.length) throw {code:"empty"};
+    if (!d.title && title) d.title = title.slice(0, 80);
+    d.pairs = all.map(p => ({id:uid(), fx:p.fx, de:p.de, box:0}));
+    d.note = [...notes].join(" ");
+    d.busy = false; ocrProgress = null;
+    go("review");
+  } catch (e) {
+    d.busy = false; ocrProgress = null;
+    if (d.cancelled) { renderMain(); return; }
+    d.error = e && e.code === "empty"
+      ? "Auf dem Foto wurden keine Vokabeln gefunden. Fotografiere die Liste gerade, hell und vollständig."
+      : (e && e.message === "load")
+        ? "Die Texterkennung konnte nicht geladen werden. Prüfe die Internetverbindung und versuche es noch einmal."
+        : "Die Erkennung hat nicht geklappt. Bitte noch einmal versuchen oder die Vokabeln als Text einfügen.";
+    stopOcr();
+    renderMain();
+  }
+}
+
+function fromText(){
+  const d = S.draft;
+  const pairs = d.text.split(/\r?\n/).map(line => {
+    const m = line.split(/\t|\s[–—=-]\s|\s*=\s*|\s[–—]\s?/);
+    if (m.length < 2) return null;
+    return {id:uid(), fx:m[0].trim(), de:m.slice(1).join(" – ").trim(), box:0};
+  }).filter(p => p && (p.fx || p.de));
+  if (!pairs.length) { d.error = "Keine Paare gefunden. Trenne Fremdwort und Deutsch mit – oder =."; renderMain(); return; }
+  d.pairs = pairs; d.error = ""; go("review");
+}
+function editList(l){
+  S.draft = {id:l.id, title:l.title, lang:l.lang, files:[], text:"", busy:false, error:"",
+    pairs:l.pairs.map(p=>({...p})), created:l.created, lastPracticed:l.lastPracticed, sessions:l.sessions};
+  go("review");
+}
+
+/* ---------- review / edit ---------- */
+function viewReview(){
+  const d = S.draft; const L = LANGS[d.lang];
+  const bad = p => /\s\?$/.test(p.fx) || /\s\?$/.test(p.de) || !p.fx.trim() || !p.de.trim();
+  const rows = d.pairs.map((p,i) => h("div",{class:"edit-row"+(bad(p)?" flag":"")},
+    h("input",{id:`fx-${p.id}`,value:p.fx,placeholder:"fehlt","aria-label":`${L.name} Zeile ${i+1}`,oninput:e=>p.fx=e.target.value}),
+    h("input",{id:`de-${p.id}`,value:p.de,placeholder:"fehlt","aria-label":`Deutsch Zeile ${i+1}`,oninput:e=>p.de=e.target.value}),
+    h("button",{class:"x","aria-label":`Zeile ${i+1} entfernen`,onclick:()=>{d.pairs.splice(i,1);renderMain();}},"×")));
+  const flagged = d.pairs.filter(bad).length;
+  return h("div",{class:"sheet"},
+    h("div",null,h("p",{class:"label"},d.id?"Liste bearbeiten":"Erkannt – bitte kurz prüfen"),h("h2",null,"Stimmt alles?")),
+    h("div",{class:"row"},
+      h("label",{class:"field grow"},h("span",{class:"label"},"Titel"),
+        h("input",{id:"rTitle",value:d.title,placeholder:"z. B. Unit 3",oninput:e=>d.title=e.target.value})),
+      h("label",{class:"field"},h("span",{class:"label"},"Sprache"),
+        h("select",{id:"rLang",onchange:e=>{d.lang=e.target.value;renderMain();}},
+          Object.entries(LANGS).map(([c,X])=>h("option",{value:c,selected:c===d.lang},X.name))))),
+    d.note ? h("p",{class:"note"},d.note) : null,
+    flagged ? h("p",{class:"note"},`${flagged} Zeile${flagged>1?"n":""} unsicher gelesen oder unvollständig (rot). Bitte mit dem Zettel vergleichen, korrigieren und ein „?“ am Ende entfernen.`) : null,
+    h("div",{class:"edit"},
+      h("div",{class:"edit-row head"},h("span",null,L.name),h("span",null,"Deutsch"),h("span")),
+      rows),
+    h("div",{class:"row"},
+      h("button",{class:"btn ghost grow",onclick:()=>{const p={id:uid(),fx:"",de:"",box:0};d.pairs.push(p);renderMain();setTimeout(()=>$(`#fx-${p.id}`)?.focus());}},"+ Zeile hinzufügen"),
+      h("button",{class:"btn ghost",onclick:()=>{d.pairs.forEach(p=>{const t=p.fx;p.fx=p.de;p.de=t;});renderMain();}},"Spalten tauschen")),
+    h("div",{class:"row"},
+      h("button",{class:"btn hl grow",disabled:!d.pairs.length,onclick:saveDraft},`${d.pairs.filter(p=>p.fx.trim()&&p.de.trim()).length} Vokabeln speichern`),
+      h("button",{class:"btn ghost",onclick:()=>go("lists")},"Abbrechen"))
+  );
+}
+async function saveDraft(){
+  const d = S.draft;
+  const fix = t => t.replace(/\s\?$/,"").trim();
+  const pairs = d.pairs.map(p=>({id:p.id, fx:fix(p.fx), de:fix(p.de), box:p.box||0})).filter(p=>p.fx&&p.de);
+  if (!pairs.length) return;
+  const l = {id:d.id||uid(), profileId:S.kid, title:(d.title||"").trim()||`${LANGS[d.lang].name} ${fmtDate(Date.now())}`,
+    lang:d.lang, pairs, created:d.created||Date.now(), lastPracticed:d.lastPracticed||null, sessions:d.sessions||0};
+  try { await Store.putList(l); } catch(e){ d.error="Speichern hat nicht geklappt. Bitte noch einmal versuchen."; renderMain(); return; }
+  S.draft = null; go("lists");
+}
+
+/* ---------- practice setup ---------- */
+const prefs = ls.get("vk-prefs", {dir:"mix", mode:"write"});
+function openSetup(id){ S.setupId = id; S.onlyHard = false; go("setup"); }
+function viewSetup(){
+  const l = S.lists.find(x=>x.id===S.setupId); if (!l) { S.view="lists"; return viewLists(); }
+  const L = LANGS[l.lang]||LANGS.en;
+  const hard = l.pairs.filter(p=>(p.box||0)<3).length;
+  const seg = (key, opts) => h("div",{class:"seg"}, opts.map(([v,t]) =>
+    h("button",{"aria-pressed":String(prefs[key]===v),onclick:()=>{prefs[key]=v;ls.set("vk-prefs",prefs);renderMain();}},t)));
+  return h("div",{class:"sheet"},
+    h("div",null,h("p",{class:"label"},`${L.name} · ${l.pairs.length} Vokabeln`),h("h2",null,l.title)),
+    h("div",{class:"field"},h("span",{class:"label"},"Richtung"),
+      seg("dir",[["fx",`${L.name} → Deutsch`],["de",`Deutsch → ${L.name}`],["mix","Gemischt"]])),
+    h("div",{class:"field"},h("span",{class:"label"},"Art"),
+      seg("mode",[["write","Schreiben"],["card","Karteikarte"]])),
+    h("label",{class:"row",style:{cursor:"pointer"}},
+      h("input",{type:"checkbox",id:"onlyHard",checked:S.onlyHard,disabled:!hard||hard===l.pairs.length,onchange:e=>S.onlyHard=e.target.checked,style:{width:"22px",height:"22px"}}),
+      h("span",null,`Nur Wörter, die noch nicht sitzen (${hard})`)),
+    h("p",{class:"small muted"},"Falsche Antworten kommen später noch einmal dran, bis jedes Wort einmal richtig war."),
+    h("div",{class:"row"},
+      h("button",{class:"btn hl grow",onclick:()=>startSession(l, S.onlyHard)},"Los geht's"),
+      h("button",{class:"btn ghost",onclick:()=>go("lists")},"Zurück"))
+  );
+}
+
+/* ---------- practice session ---------- */
+function shuffle(a){ for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function startSession(l, onlyHard, onlyIds){
+  let items = l.pairs.filter(p => onlyIds ? onlyIds.includes(p.id) : onlyHard ? (p.box||0)<3 : true);
+  if (!items.length) items = l.pairs.slice();
+  const queue = shuffle(items.map(p => ({id:p.id, dir: prefs.dir==="mix" ? (Math.random()<.5?"fx":"de") : prefs.dir})));
+  S.session = {listId:l.id, lang:l.lang, queue, total:queue.length, done:new Set(), firstTry:{}, wrong:0, missed:new Set(),
+    phase:"ask", input:"", verdict:null, mode:prefs.mode};
+  go("practice");
+}
+function curItem(){ const s=S.session; const it=s.queue[0]; const l=S.lists.find(x=>x.id===s.listId); const p=l?.pairs.find(x=>x.id===it?.id); return {it,p,l}; }
+function viewPractice(){
+  const s = S.session; const {it,p,l} = curItem();
+  if (!it || !p) return viewDone();
+  const L = LANGS[s.lang]||LANGS.en;
+  const ask = it.dir==="fx" ? p.fx : p.de;
+  const sol = it.dir==="fx" ? p.de : p.fx;
+  const answerLang = it.dir==="fx" ? "de" : s.lang;
+  const fromName = it.dir==="fx" ? L.name : "Deutsch", toName = it.dir==="fx" ? "Deutsch" : L.name;
+  const pct = s.done.size / s.total * 100;
+
+  const head = h("div",{class:"progress"},
+    h("div",{class:"bar","aria-hidden":"true"},h("i",{style:{width:pct+"%"}})),
+    h("span",{class:"small nums"},`${s.done.size} / ${s.total}`),
+    h("button",{class:"speak",onclick:()=>finishSession(true)},"Beenden"));
+
+  const speakBtn = (L.tts && it.dir==="fx") ? h("button",{class:"speak","aria-label":"Vorlesen",onclick:()=>speak(p.fx,L.tts)},"Anhören") : null;
+
+  const card = h("div",{class:"card"},
+    h("div",{class:"dir small muted"},h("span",null,`${fromName} → ${toName}`),speakBtn),
+    h("div",{class:"prompt",lang:it.dir==="fx"?L.tts||"":"de"},ask));
+
+  if (s.mode === "card") {
+    if (s.phase === "ask") {
+      card.append(h("button",{class:"btn hl",id:"flip",onclick:()=>{s.phase="shown";renderMain();}},"Umdrehen"));
+    } else {
+      card.append(h("div",{class:"feedback"},h("span",{class:"sol"},sol),
+          (L.tts && it.dir==="de") ? h("button",{class:"speak",onclick:()=>speak(p.fx,L.tts)},"Anhören") : null),
+        h("div",{class:"row"},
+          h("button",{class:"btn ghost grow",onclick:()=>grade(false)},"Wusste ich nicht"),
+          h("button",{class:"btn hl grow",id:"knew",onclick:()=>grade(true)},"Gewusst")));
+    }
+    setTimeout(()=>($("#flip")||$("#knew"))?.focus());
+    return h("div",{style:{display:"flex",flexDirection:"column",gap:"14px"}},head,card);
+  }
+
+  // writing mode
+  const v = s.verdict;
+  const inp = h("input",{class:"answer-in"+(v?(v.ok?" ok":" bad"):""),id:"answer",autocomplete:"off",autocapitalize:"off",autocorrect:"off",spellcheck:"false",
+    lang:answerLang==="de"?"de":(L.tts||""),placeholder:`Auf ${toName} schreiben …`,value:s.input,readonly:s.phase!=="ask",
+    oninput:e=>s.input=e.target.value,
+    onkeydown:e=>{ if(e.key==="Enter"){ e.preventDefault(); s.phase==="ask" ? check() : next(); } }});
+  card.append(inp);
+  const chars = (answerLang!=="de" ? L.chars : []);
+  if (s.phase==="ask" && chars.length) card.append(h("div",{class:"chars"}, chars.map(c=>h("button",{type:"button","aria-label":`${c} einfügen`,
+    onmousedown:e=>e.preventDefault(), onclick:()=>insertChar(c)},c))));
+  if (s.phase==="ask") {
+    card.append(h("div",{class:"row"},
+      h("button",{class:"btn ghost",onclick:()=>{s.input="";s.verdict={ok:false,msg:"Übersprungen"};s.phase="checked";record(false);renderMain();}},"Weiß ich nicht"),
+      h("button",{class:"btn hl grow",onclick:check},"Prüfen")));
+  } else {
+    card.append(h("div",{class:"feedback "+(v.ok?"ok":"bad")},
+      h("strong",null,v.msg),
+      !v.ok || v.alt ? h("span",{class:"sol"},sol) : null,
+      (L.tts && answerLang!=="de") ? h("button",{class:"speak",onclick:()=>speak(p.fx,L.tts)},"Anhören") : null));
+    card.append(h("div",{class:"row"},
+      (!v.ok && s.input.trim()) ? h("button",{class:"btn ghost",onclick:override},"War doch richtig") : null,
+      h("button",{class:"btn hl grow",id:"nextBtn",onclick:next},"Weiter")));
+  }
+  setTimeout(()=>{ const a=$("#answer"); if (s.phase==="ask") { a?.focus(); } else $("#nextBtn")?.focus(); });
+  return h("div",{style:{display:"flex",flexDirection:"column",gap:"14px"}},head,card);
+}
+function insertChar(c){
+  const a = $("#answer"); if (!a) return;
+  const st = a.selectionStart ?? a.value.length, en = a.selectionEnd ?? a.value.length;
+  a.value = a.value.slice(0,st)+c+a.value.slice(en); S.session.input = a.value;
+  a.focus(); a.setSelectionRange(st+1, st+1);
+}
+function speak(text, lang){
+  try { const u = new SpeechSynthesisUtterance(text.replace(/\(.*?\)|\?$/g,"")); u.lang = lang; u.rate = .9; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch {}
+}
+
+/* answer checking */
+const ARTICLES = /^(der|die|das|ein|eine|the|a|an|el|la|los|las|un|una|le|les|l'|une)\s+/;
+function base(s){ return s.normalize("NFC").toLowerCase().replace(/[’`´]/g,"'").replace(/[.!?¡¿;:"„“”]/g,"").replace(/\s+/g," ").trim(); }
+function noAcc(s){ return s.normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/ß/g,"ss"); }
+function variants(sol){
+  const out = new Set();
+  sol.replace(/\s\?$/,"").split(/[,;/]| oder /).forEach(alt => {
+    alt = alt.trim(); if (!alt) return;
+    const a = base(alt.replace(/\(.*?\)/g," "));      // ohne Klammerinhalt
+    const b = base(alt.replace(/[()]/g,""));            // mit Klammerinhalt
+    [a,b].forEach(x => { if (!x) return; out.add(x); out.add(x.replace(/^to /,"")); });
+  });
+  return [...out];
+}
+function judge(input, sol){
+  const u = base(input).replace(/^to /,"");
+  if (!u) return {ok:false,msg:"Nichts eingegeben"};
+  const vs = variants(sol);
+  const whole = base(sol.replace(/\s\?$/,""));
+  if (vs.includes(u) || u === whole.replace(/^to /,"")) return {ok:true,msg:"Richtig!", alt: /[,;/]| oder /.test(sol)};
+  if (vs.some(v => noAcc(v) === noAcc(u))) return {ok:false,msg:"Fast – achte auf Akzente und Umlaute."};
+  if (vs.some(v => v.replace(ARTICLES,"") === u && v !== u)) return {ok:false,msg:"Fast – der Artikel fehlt."};
+  if (vs.some(v => lev(v,u) === 1 && v.length > 4)) return {ok:false,msg:"Fast – ein Buchstabe stimmt nicht."};
+  return {ok:false,msg:"Leider falsch. Richtig ist:"};
+}
+function lev(a,b){ if (Math.abs(a.length-b.length)>1) return 2; const m=a.length,n=b.length; let prev=Array.from({length:n+1},(_,j)=>j);
+  for (let i=1;i<=m;i++){ const cur=[i]; for (let j=1;j<=n;j++) cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1)); prev=cur; } return prev[n]; }
+
+function check(){
+  const s = S.session; const {it,p} = curItem();
+  s.input = $("#answer")?.value ?? s.input;
+  const sol = it.dir==="fx" ? p.de : p.fx;
+  s.verdict = judge(s.input, sol);
+  s.phase = "checked"; record(s.verdict.ok); renderMain();
+}
+function record(ok){
+  const s = S.session; const it = s.queue[0];
+  if (!(it.id+it.dir in s.firstTry)) s.firstTry[it.id+it.dir] = ok;
+  if (!ok) { s.wrong++; s.missed.add(it.id); }
+}
+function override(){
+  const s = S.session; const it = s.queue[0];
+  s.firstTry[it.id+it.dir] = true; s.wrong = Math.max(0, s.wrong-1);
+  if (!Object.entries(s.firstTry).some(([k,v]) => k.startsWith(it.id) && v===false)) s.missed.delete(it.id);
+  s.verdict = {ok:true,msg:"Als richtig gewertet."}; renderMain();
+}
+function grade(ok){ record(ok); S.session.verdict={ok}; next(); }
+function next(){
+  const s = S.session; const it = s.queue.shift();
+  if (s.verdict?.ok) s.done.add(it.id+it.dir);
+  else s.queue.splice(Math.min(3, s.queue.length), 0, it);   // kommt bald wieder
+  s.phase="ask"; s.input=""; s.verdict=null;
+  if (!s.queue.length) return finishSession(false);
+  renderMain();
+}
+async function finishSession(early){
+  const s = S.session; const l = S.lists.find(x=>x.id===s.listId); if (!l) { go("lists"); return; }
+  const result = {};
+  for (const [k,v] of Object.entries(s.firstTry)) { const id = k.slice(0,-2); result[id] = (result[id] ?? true) && v; }
+  const pairs = l.pairs.map(p => p.id in result
+    ? {...p, box: result[p.id] ? Math.min(5,(p.box||0)+1) : 1}
+    : p);
+  s.summary = {early, answered:Object.keys(result).length, firstOk:Object.values(result).filter(Boolean).length, missed:[...s.missed]};
+  if (Object.keys(result).length) {
+    try { await Store.putList({...l, pairs, lastPracticed:Date.now(), sessions:(l.sessions||0)+1}); } catch {}
+  }
+  go("done");
+}
+function viewDone(){
+  const s = S.session; const l = S.lists.find(x=>x.id===s?.listId);
+  if (!s || !l) { S.view="lists"; return viewLists(); }
+  const sm = s.summary || {answered:0,firstOk:0,missed:[]};
+  const missedPairs = l.pairs.filter(p => sm.missed.includes(p.id));
+  return h("div",{class:"sheet"},
+    h("div",null,h("p",{class:"label"},l.title),h("h2",null, sm.early ? "Für heute beendet" : (missedPairs.length ? "Geschafft!" : "Alles auf Anhieb richtig!"))),
+    h("div",{class:"stat nums"},
+      h("div",null,h("strong",null,sm.answered),h("span",{class:"small muted"},"geübt")),
+      h("div",null,h("strong",{style:{color:"var(--ok)"}},sm.firstOk),h("span",{class:"small muted"},"sofort richtig")),
+      h("div",null,h("strong",{style:{color:"var(--bad)"}},missedPairs.length),h("span",{class:"small muted"},"mit Fehler"))),
+    missedPairs.length ? [h("p",{class:"label"},"Diese Wörter nochmal anschauen"),
+      h("div",{class:"heft"}, missedPairs.map(p=>[h("div",null,p.fx),h("div",null,p.de)]))] : null,
+    h("div",{class:"row"},
+      missedPairs.length ? h("button",{class:"btn hl grow",onclick:()=>startSession(l,false,missedPairs.map(p=>p.id))},"Nur die Fehler üben") : null,
+      h("button",{class:missedPairs.length?"btn ghost":"btn hl grow",onclick:()=>startSession(l,false)},"Ganze Liste nochmal"),
+      h("button",{class:"btn ghost",onclick:()=>go("lists")},"Zu den Listen"))
+  );
+}
+
+/* ---------- boot ---------- */
+document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.view==="lists")));
+renderKids(); renderMain();
+Store.init();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
+window.addEventListener("hashchange", checkImport);
+})();
+</script>
+</body>
+</html>
