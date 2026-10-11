@@ -435,7 +435,7 @@ function viewNew(){
         h("input",{id:"dLink",placeholder:"https://stefesbau.github.io/vokabelkasten/#import=…",autocomplete:"off",autocapitalize:"off",
           onpaste:e=>{ const t=(e.clipboardData||window.clipboardData)?.getData("text"); if (t) { e.preventDefault(); e.target.value=t; checkImport(t); } }}),
         h("button",{class:"btn ghost",onclick:()=>checkImport($("#dLink").value)},"Übernehmen"))),
-    h("details",null,
+    h("details",{open:!!d.textOpen},
       h("summary",{class:"small",style:{cursor:"pointer",minHeight:"36px"}},"Oder als Text einfügen"),
       h("div",{class:"field",style:{marginTop:"10px"}},
         h("span",{class:"small muted"},"Eine Vokabel pro Zeile, getrennt mit  –  oder  =  oder Tab, z. B. „to arrive – ankommen“."),
@@ -484,25 +484,32 @@ function setProgress(label, pct){
   if (l) l.textContent = label;
   if (b) b.style.width = Math.round((pct||0)*100) + "%";
 }
-async function prepImage(file){
+async function prepImage(file, opts = {}){
   const url = URL.createObjectURL(file);
   try {
     const img = new Image(); img.src = url; await img.decode();
-    const max = 2400, sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const big = Math.max(img.naturalWidth, img.naturalHeight);
+    // small pictures (screenshots) are enlarged, large photos reduced
+    const sc = Math.min(opts.upscale ? 3 : 2, 2600 / big);
     const c = document.createElement("canvas");
     c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
     const g = c.getContext("2d", {willReadFrequently:true});
+    g.imageSmoothingQuality = "high";
     g.drawImage(img, 0, 0, c.width, c.height);
-    // grayscale + contrast stretch
+    // gray from the darkest colour channel: blue, red or green ink turns dark
     const id = g.getImageData(0, 0, c.width, c.height), px = id.data;
-    let lo = 255, hi = 0; const lum = new Uint8ClampedArray(px.length / 4);
+    const gray = new Uint8ClampedArray(px.length / 4), hist = new Uint32Array(256);
     for (let i = 0, j = 0; i < px.length; i += 4, j++) {
-      const v = (px[i]*299 + px[i+1]*587 + px[i+2]*114) / 1000; lum[j] = v;
-      if (j % 16 === 0) { if (v < lo) lo = v; if (v > hi) hi = v; }
+      const v = Math.min(px[i], px[i+1], px[i+2]) * 0.75 + (px[i]*299 + px[i+1]*587 + px[i+2]*114) / 1000 * 0.25;
+      gray[j] = v; hist[gray[j]]++;
     }
-    const span = Math.max(40, hi - lo);
+    // stretch contrast between the 2nd and 98th percentile
+    const n = gray.length; let acc = 0, lo = 0, hi = 255;
+    for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= n * 0.02) { lo = v; break; } }
+    acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= n * 0.02) { hi = v; break; } }
+    const span = Math.max(30, hi - lo);
     for (let i = 0, j = 0; i < px.length; i += 4, j++) {
-      const v = Math.max(0, Math.min(255, (lum[j] - lo) * 255 / span));
+      const v = Math.max(0, Math.min(255, (gray[j] - lo) * 255 / span));
       px[i] = px[i+1] = px[i+2] = v;
     }
     g.putImageData(id, 0, 0);
@@ -523,21 +530,37 @@ async function recognize(){
   try {
     await loadTesseract();
     const worker = await getWorker(d.lang);
-    const all = []; const notes = new Set(); let title = "";
+    const all = []; const notes = new Set(); let title = ""; const raw = [];
     for (page = 0; page < n; page++) {
       if (d.cancelled) break;
       setProgress(n > 1 ? `Seite ${page+1} von ${n} wird vorbereitet …` : "Foto wird vorbereitet …", page / n);
-      const canvas = await prepImage(d.files[page].blob);
-      const { data } = await worker.recognize(canvas);
-      const words = (data.words || []).map(w => ({text:w.text, conf:w.confidence, x0:w.bbox.x0, y0:w.bbox.y0, x1:w.bbox.x1, y1:w.bbox.y1}));
-      const angle = VkPair.tiltFromBaselines((data.lines || []).map(l => l.baseline));
-      const res = VkPair.pairFromWords(words, {angle});
+      let res = null, rawText = "";
+      // 1st try: normal; 2nd try: enlarged picture, text read as one block
+      for (const attempt of [{}, {upscale:true, psm:"6"}]) {
+        if (d.cancelled) break;
+        const canvas = await prepImage(d.files[page].blob, attempt);
+        await worker.setParameters({tessedit_pageseg_mode: attempt.psm || "3"});
+        const { data } = await worker.recognize(canvas);
+        const words = (data.words || []).map(w => ({text:w.text, conf:w.confidence, x0:w.bbox.x0, y0:w.bbox.y0, x1:w.bbox.x1, y1:w.bbox.y1}));
+        const angle = VkPair.tiltFromBaselines((data.lines || []).map(l => l.baseline));
+        const r = VkPair.pairFromWords(words, {angle});
+        if (!res || r.pairs.length > res.pairs.length) res = r;
+        if ((data.text || "").trim().length > rawText.length) rawText = (data.text || "").trim();
+        if (res.pairs.length >= 3) break;
+        setProgress(n > 1 ? `Seite ${page+1} von ${n}: zweiter Versuch …` : "Zweiter Versuch mit vergrößertem Bild …", page / n);
+      }
+      if (!res.pairs.length && rawText) raw.push(rawText);
       all.push(...res.pairs);
       if (!title && res.title) title = res.title;
       if (res.note) notes.add(res.note);
       if (res.swapped) notes.add("Die deutsche Spalte stand links und wurde nach rechts sortiert.");
     }
     if (d.cancelled) { d.busy = false; renderMain(); return; }
+    if (!all.length && raw.length) {
+      d.text = raw.join("\n"); d.textOpen = true; d.busy = false; ocrProgress = null;
+      d.error = "Die Spalten konnten nicht zugeordnet werden. Der gelesene Text steht unten unter „Oder als Text einfügen“. Dort pro Zeile „englisch – deutsch“ korrigieren und übernehmen, oder ein schärferes Foto direkt vom Blatt verwenden (kein Bildschirmfoto).";
+      renderMain(); return;
+    }
     if (!all.length) throw {code:"empty"};
     if (!d.title && title) d.title = title.slice(0, 80);
     d.pairs = all.map(p => ({id:uid(), fx:p.fx, de:p.de, box:0}));
@@ -548,7 +571,7 @@ async function recognize(){
     d.busy = false; ocrProgress = null;
     if (d.cancelled) { renderMain(); return; }
     d.error = e && e.code === "empty"
-      ? "Auf dem Foto wurden keine Vokabeln gefunden. Fotografiere die Liste gerade, hell und vollständig."
+      ? "Auf dem Foto wurden keine Vokabeln gefunden. Nimm ein Foto direkt vom Blatt (kein Bildschirmfoto aus einer anderen App): gerade, hell und so nah, dass die Liste das Bild füllt."
       : (e && e.message === "load")
         ? "Die Texterkennung konnte nicht geladen werden. Prüfe die Internetverbindung und versuche es noch einmal."
         : "Die Erkennung hat nicht geklappt. Bitte noch einmal versuchen oder die Vokabeln als Text einfügen.";
