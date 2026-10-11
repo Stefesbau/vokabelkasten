@@ -105,6 +105,73 @@
     return hint + cap * 0.5;
   };
 
+  /* remove phonetic transcriptions that OCR turned into plain text: /…/ and […] */
+  function stripPhon(t) {
+    const flag = /\s\?$/.test(t);
+    t = t.replace(/\s\?$/, "")
+      .replace(/\/[^\/]{0,40}\//g, " ")
+      .replace(/\[[^\]]{0,40}\]/g, " ")
+      .replace(/(^|\s)\/[^\/]*$/, " ")
+      .replace(/\s+/g, " ").trim();
+    return t && flag ? t + " ?" : t;
+  }
+
+  /* lines of one column → [{y, text}] */
+  function columnLines(words, angle) {
+    if (!words.length) return [];
+    const { rows } = groupRows(words, angle);
+    rows.forEach(dropPhonetics);
+    return rows.filter(r => r.words.length).map(r => ({ y: r.cy, text: textOf(r.words) })).filter(l => l.text);
+  }
+
+  /* Match left and right lines by height. The vertical shift between the two
+     columns is learned as we go down the page, so curved book pages and
+     tilted photos still line up. */
+  function alignColumns(leftWords, rightWords, angle, h) {
+    let A = columnLines(leftWords, angle), B = columnLines(rightWords, angle);
+    let swapped = false;
+    if (deScore(A.map(l => l.text)) > deScore(B.map(l => l.text)) + 0.15) { const t = A; A = B; B = t; swapped = true; }
+    A = A.map(l => ({ ...l, text: stripPhon(l.text) })).filter(l => l.text.replace(/\s\?$/, "").length > 0);
+    A.sort((a, b) => a.y - b.y); B.sort((a, b) => a.y - b.y);
+
+    const tol = h * 0.8;
+    // one pass down the page, starting with shift d0, adapting the shift on every match
+    function run(d0) {
+      let d = d0, score = 0;
+      const pairs = []; let title = ""; let j = 0;
+      const addCont = text => {
+        if (pairs.length) { pairs[pairs.length - 1].de = (pairs[pairs.length - 1].de + " " + text).trim(); score -= 0.4; }
+        else score -= 1;
+      };
+      for (const a of A) {
+        while (j < B.length && B[j].y - d < a.y - tol) { addCont(B[j].text); j++; }
+        let k = -1;
+        if (j < B.length && Math.abs(B[j].y - d - a.y) <= tol) k = j;
+        if (k >= 0 && j + 1 < B.length && Math.abs(B[j + 1].y - d - a.y) < Math.abs(B[j].y - d - a.y)) { addCont(B[j].text); k = j + 1; }
+        if (k >= 0) {
+          const miss = Math.abs(B[k].y - d - a.y) / tol;
+          score += 2 - miss;
+          pairs.push({ fx: a.text, de: B[k].text });
+          d = d * 0.6 + (B[k].y - a.y) * 0.4;
+          j = k + 1;
+        } else if (!pairs.length && !title) {
+          title = a.text.replace(/\s\?$/, "");
+        } else {
+          pairs.push({ fx: a.text, de: "" }); score -= 1;
+        }
+      }
+      while (j < B.length) { addCont(B[j].text); j++; }
+      return { pairs, title, score };
+    }
+    // try a range of starting shifts and keep the most consistent result
+    let best = null;
+    for (let s = -2.5; s <= 2.5001; s += 0.125) {
+      const r = run(s * h);
+      if (!best || r.score > best.score + 1e-9 || (Math.abs(r.score - best.score) < 1e-9 && Math.abs(s) < Math.abs(best.s))) best = { ...r, s };
+    }
+    return { pairs: best.pairs, title: best.title, swapped };
+  }
+
   function pairFromWords(words, opts = {}) {
     const { rows, hMed } = groupRows(words, opts.angle);
     rows.forEach(dropPhonetics);
@@ -129,6 +196,13 @@
       if (keep.length > 2) note = "Eine weitere Spalte (z. B. Beispielsätze) wurde weggelassen.";
       if (keep.length < 2) keep = [0, Math.min(1, nCols - 1)];
       keep = keep.slice(0, 2);
+      if (keep[0] !== keep[1]) {
+        // two real columns: read each column on its own, then match the lines
+        const colOf = w => { const cx = (w.x0 + w.x1) / 2; let c = 0; while (c < bounds.length && cx > bounds[c]) c++; return c; };
+        const all = live.flatMap(r => r.words);
+        const res = alignColumns(all.filter(w => colOf(w) === keep[0]), all.filter(w => colOf(w) === keep[1]), opts.angle, hMed);
+        return { ...res, note, columns: nCols };
+      }
       table = table.map(r => [r[keep[0]] || "", r[keep[1]] || ""]);
     } else {
       // single column: "dog – Hund", "dog = Hund", "dog: Hund"
