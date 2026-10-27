@@ -96,8 +96,28 @@
     return bounds;
   }
 
-  const clean = s => s.replace(/\s+/g, " ").replace(/^\d{1,3}[.)]\s+/, "").replace(/^[•·\-–—*]\s*/, "").trim();
-  const textOf = ws => clean(ws.map(w => w.text).join(" ")) + (ws.some(w => (w.conf ?? 100) < 55) ? " ?" : "");
+  /* keep only the vocabulary: no brackets with notes, no stray symbols */
+  const clean = s => s
+    .replace(/\([^()]{0,40}\)|\[[^\[\]]{0,40}\]|\{[^{}]{0,40}\}|<[^<>]{0,40}>/g, " ")
+    .replace(/[()\[\]{}<>|»«*~^_•■□©®°§#@$%&+\\]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^\d{1,3}[.)]?\s+/, "").replace(/^[\-–—:;,.!]+\s*/, "").replace(/[\s\-–—:;,]+$/, "")
+    .trim();
+  const WORDISH = /^[\p{L}][\p{L}'’.\-\/]*[,;!?.]?$|^[¿¡][\p{L}]/u;
+  const keepWord = w => {
+    const t = w.text, c = w.conf ?? 100;
+    if (t === "/" && c >= 50) return true;                     // "der Nachbar / die Nachbarin"
+    if (!/\p{L}/u.test(t)) return false;                       // numbers and symbols only
+    if (c < 35 && !WORDISH.test(t)) return false;               // unreadable fragments
+    if (t.length === 1 && c < 60 && !/^[aAIyoeàé]$/.test(t)) return false;
+    return true;
+  };
+  const textOf = ws0 => {
+    // numbers stay only next to real words (e.g. "Unit 3"), never on their own
+    const ws = ws0.filter(w => keepWord(w) || (/^\d{1,3}[a-z]?$/.test(w.text) && (w.conf ?? 100) >= 60 && ws0.some(x => x !== w && /\p{L}{2}/u.test(x.text))));
+    const t = clean(ws.map(w => w.text).join(" "));
+    return t ? t + (ws.some(w => (w.conf ?? 100) < 55) ? " ?" : "") : "";
+  };
   const deScore = texts => {
     const t = texts.filter(Boolean); if (!t.length) return 0;
     const hint = t.filter(x => DE_CHARS.test(x) || DE_WORDS.test(x)).length / t.length;
@@ -112,7 +132,10 @@
       .replace(/\/[^\/]{0,40}\//g, " ")
       .replace(/\[[^\]]{0,40}\]/g, " ")
       .replace(/(^|\s)\/[^\/]*$/, " ")
-      .replace(/\s+/g, " ").trim();
+      .split(/\s+/)
+      // leftovers of phonetics: /…, …/, length marks (a:), stress marks ('ga, ˌse)
+      .filter(tok => tok && !/^[\/\\]|[\/\\]$/.test(tok) && !/\p{L}:/u.test(tok) && !/^['ˈˌ,.]\p{L}/u.test(tok))
+      .join(" ").trim();
     return t && flag ? t + " ?" : t;
   }
 

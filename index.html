@@ -412,7 +412,7 @@ function viewNew(){
     h("span",{class:"small muted"}, d.files.length ? "Tippen, um weitere Seiten hinzuzufügen" : "Kamera oder Fotos · auch mehrere Seiten"),
     fileIn);
   return h("div",{class:"sheet"},
-    h("div",null,h("p",{class:"label"},`Neue Liste für ${k?.name||""}`),h("h2",null,"Vokabelzettel einlesen")),
+    h("div",null,h("p",{class:"label"},d.append ? `${d.title||"Liste"} · weitere Seite` : `Neue Liste für ${k?.name||""}`),h("h2",null,d.append ? "Weitere Seite einlesen" : "Vokabelzettel einlesen")),
     h("div",{class:"row"},
       h("label",{class:"field grow"},h("span",{class:"label"},"Titel"),
         h("input",{id:"dTitle",value:d.title,placeholder:"z. B. Unit 3 – Test am Freitag",oninput:e=>d.title=e.target.value})),
@@ -567,7 +567,12 @@ async function recognize(){
       if (res.note) notes.add(res.note);
       if (res.swapped) notes.add("Die deutsche Spalte stand links und wurde nach rechts sortiert.");
     }
-    if (d.cancelled) { d.busy = false; renderMain(); return; }
+    if (d.cancelled) { d.busy = false; if (d.append) { d.append = false; d.files = []; go("review"); } else renderMain(); return; }
+    if (!all.length && raw.length && d.append) {
+      d.busy = false; ocrProgress = null; d.append = false; d.files = [];
+      d.error = "Auf dem neuen Foto konnten keine Vokabelpaare zugeordnet werden. Versuch ein schärferes Foto direkt vom Blatt.";
+      go("review"); return;
+    }
     if (!all.length && raw.length) {
       d.text = raw.join("\n"); d.textOpen = true; d.busy = false; ocrProgress = null;
       d.error = "Die Spalten konnten nicht zugeordnet werden. Der gelesene Text steht unten unter „Oder als Text einfügen“. Dort pro Zeile „englisch – deutsch“ korrigieren und übernehmen, oder ein schärferes Foto direkt vom Blatt verwenden (kein Bildschirmfoto).";
@@ -575,7 +580,12 @@ async function recognize(){
     }
     if (!all.length) throw {code:"empty"};
     if (!d.title && title) d.title = title.slice(0, 80);
-    d.pairs = all.map(p => ({id:uid(), fx:p.fx, de:p.de, box:0}));
+    const fresh = all.map(p => ({id:uid(), fx:p.fx, de:p.de, box:0}));
+    if (d.append) {
+      d.pairs = [...(d.pairs || []), ...fresh];
+      notes.add(`${fresh.length} Vokabeln vom neuen Foto unten angehängt.`);
+    } else d.pairs = fresh;
+    d.append = false; d.files = [];
     d.note = [...notes].join(" ");
     d.busy = false; ocrProgress = null;
     go("review");
@@ -588,7 +598,7 @@ async function recognize(){
         ? "Die Texterkennung konnte nicht geladen werden. Prüfe die Internetverbindung und versuche es noch einmal."
         : "Die Erkennung hat nicht geklappt. Bitte noch einmal versuchen oder die Vokabeln als Text einfügen.";
     stopOcr();
-    renderMain();
+    if (d.append) { d.append = false; d.files = []; go("review"); } else renderMain();
   }
 }
 
@@ -626,6 +636,7 @@ function viewReview(){
         h("select",{id:"rLang",onchange:e=>{d.lang=e.target.value;renderMain();}},
           Object.entries(LANGS).map(([c,X])=>h("option",{value:c,selected:c===d.lang},X.name))))),
     d.note ? h("p",{class:"note"},d.note) : null,
+    d.error ? h("p",{class:"note bad"},d.error) : null,
     flagged ? h("p",{class:"note"},`${flagged} Zeile${flagged>1?"n":""} unsicher gelesen oder unvollständig (rot). Bitte mit dem Zettel vergleichen, korrigieren und ein „?“ am Ende entfernen.`) : null,
     h("div",{class:"edit"},
       h("div",{class:"edit-row head"},h("span",null,L.name),h("span",null,"Deutsch"),h("span")),
@@ -633,6 +644,13 @@ function viewReview(){
     h("div",{class:"row"},
       h("button",{class:"btn ghost grow",onclick:()=>{const p={id:uid(),fx:"",de:"",box:0};d.pairs.push(p);renderMain();setTimeout(()=>$(`#fx-${p.id}`)?.focus());}},"+ Zeile hinzufügen"),
       h("button",{class:"btn ghost",onclick:()=>{d.pairs.forEach(p=>{const t=p.fx;p.fx=p.de;p.de=t;});renderMain();}},"Spalten tauschen")),
+    h("input",{type:"file",id:"moreIn",accept:"image/*",multiple:true,hidden:true,onchange:e=>{
+      const fs = Array.from(e.target.files||[]).slice(0,6); e.target.value = "";
+      if (!fs.length) return;
+      d.files = fs.map(f => ({blob:f, url:URL.createObjectURL(f)})); d.append = true; d.error = ""; d.note = "";
+      S.view = "new"; renderMain(); recognize();
+    }}),
+    h("button",{class:"btn ghost",onclick:()=>$("#moreIn").click()},"+ Weitere Seite fotografieren"),
     h("div",{class:"row"},
       h("button",{class:"btn hl grow",disabled:!d.pairs.length,onclick:saveDraft},`${d.pairs.filter(p=>p.fx.trim()&&p.de.trim()).length} Vokabeln speichern`),
       h("button",{class:"btn ghost",onclick:()=>go("lists")},"Abbrechen"))
