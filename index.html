@@ -215,8 +215,8 @@ const Store = {
     S.loaded = true;
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
     $("#storeNote").textContent = standalone
-      ? "Deine Listen sind auf diesem Gerät gespeichert."
-      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät.";
+      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026"
+      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026";
     afterData();
     checkImport();
   },

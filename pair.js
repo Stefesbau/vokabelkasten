@@ -101,7 +101,7 @@
     .replace(/\([^()]{0,40}\)|\[[^\[\]]{0,40}\]|\{[^{}]{0,40}\}|<[^<>]{0,40}>/g, " ")
     .replace(/[()\[\]{}<>|»«*~^_•■□©®°§#@$%&+\\]/g, " ")
     .replace(/\s+/g, " ")
-    .replace(/^\d{1,3}[.)]?\s+/, "").replace(/^[\-–—:;,.!]+\s*/, "").replace(/[\s\-–—:;,]+$/, "")
+    .replace(/^\d{1,3}[.)]?\s+/, "").replace(/^[\-–—:;,.!]+\s*/, "").replace(/[\s\-–—:]+$/, "")
     .trim();
   const WORDISH = /^[\p{L}][\p{L}'’.\-\/]*[,;!?.]?$|^[¿¡][\p{L}]/u;
   const keepWord = w => {
@@ -139,6 +139,10 @@
     return t && flag ? t + " ?" : t;
   }
 
+  const HEADING = /^(part|unit|lesson|step|station|topic|theme|module|chapter|teil|kapitel|lektion|unité|unidad|leçon|lección)\b[\s\w.-]{0,12}\??$/i;
+  /* common OCR slip in German words: é instead of ö (könntest) */
+  const fixDe = t => t.replace(/([A-Za-zäöüß])é(?=[a-zäöüß])/g, "$1ö").replace(/^é/, "ö");
+
   /* lines of one column → [{y, text}] */
   function columnLines(words, angle) {
     if (!words.length) return [];
@@ -163,7 +167,7 @@
       let d = d0, score = 0;
       const pairs = []; let title = ""; let j = 0;
       const addCont = text => {
-        if (pairs.length) { pairs[pairs.length - 1].de = (pairs[pairs.length - 1].de + " " + text).trim(); score -= 0.4; }
+        if (pairs.length) { const pr = pairs[pairs.length - 1]; pr.de = (pr.de.replace(/\s\?$/, "") + " " + text).trim(); score -= 0.4; }
         else score -= 1;
       };
       for (const a of A) {
@@ -179,6 +183,8 @@
           j = k + 1;
         } else if (!pairs.length && !title) {
           title = a.text.replace(/\s\?$/, "");
+        } else if (HEADING.test(a.text)) {
+          // section heading inside the list ("Part A") – skip
         } else {
           pairs.push({ fx: a.text, de: "" }); score -= 1;
         }
@@ -192,7 +198,8 @@
       const r = run(s * h);
       if (!best || r.score > best.score + 1e-9 || (Math.abs(r.score - best.score) < 1e-9 && Math.abs(s) < Math.abs(best.s))) best = { ...r, s };
     }
-    return { pairs: best.pairs, title: best.title, swapped };
+    const out = best.pairs.map(p => ({ fx: p.fx, de: fixDe(p.de).replace(/[,;]\s*$/, "") }));
+    return { pairs: out, title: best.title, swapped };
   }
 
   function pairFromWords(words, opts = {}) {
