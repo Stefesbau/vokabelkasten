@@ -143,6 +143,25 @@
   /* common OCR slip in German words: é instead of ö (könntest) */
   const fixDe = t => t.replace(/([A-Za-zäöüß])é(?=[a-zäöüß])/g, "$1ö").replace(/^é/, "ö");
 
+  /* Foreign-language entries start in lower case ("surprise", "dress up").
+     A capitalised word behind such an entry is almost always a misread
+     phonetic transcription ("surpri Prise", "advice Vice"), and a 1–2 letter
+     scrap at the end is a split word ("cent re" → "centre"). */
+  const SHORT = new Set("a an to up in on of at by it is be do go so no or if me my we us he she his her its our out off as am are was not one sb sth sb. sth. el la le un de en y o à ".split(" "));
+  function fxFix(t) {
+    const flag = /\s\?$/.test(t); t = t.replace(/\s\?$/, "");
+    let tok = t.split(" ").filter(Boolean);
+    if (tok.length >= 2 && /^[\p{Ll}(]/u.test(tok[0])) {
+      tok = tok.filter((w, i) => i === 0 || !/^[\p{Lu}][\p{Ll}]+[.,;]?$/u.test(w) || w === "I");
+      const last = tok[tok.length - 1];
+      if (tok.length >= 2 && /^\p{Ll}{1,2}$/u.test(last) && !SHORT.has(last)) {
+        tok.splice(tok.length - 2, 2, tok[tok.length - 2] + last);
+      }
+    }
+    t = tok.join(" ");
+    return t && flag ? t + " ?" : t;
+  }
+
   /* lines of one column → [{y, text}] */
   function columnLines(words, angle) {
     if (!words.length) return [];
@@ -158,7 +177,7 @@
     let A = columnLines(leftWords, angle), B = columnLines(rightWords, angle);
     let swapped = false;
     if (deScore(A.map(l => l.text)) > deScore(B.map(l => l.text)) + 0.15) { const t = A; A = B; B = t; swapped = true; }
-    A = A.map(l => ({ ...l, text: stripPhon(l.text) })).filter(l => l.text.replace(/\s\?$/, "").length > 0);
+    A = A.map(l => ({ ...l, text: fxFix(stripPhon(l.text)) })).filter(l => l.text.replace(/\s\?$/, "").length > 0);
     A.sort((a, b) => a.y - b.y); B.sort((a, b) => a.y - b.y);
 
     const tol = h * 0.8;
