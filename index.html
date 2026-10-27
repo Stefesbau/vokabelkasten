@@ -98,6 +98,8 @@ textarea{resize:vertical;min-height:120px}
 .drop.over{border-color:var(--blue)}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 .thumbs img{width:76px;height:96px;object-fit:cover;border-radius:6px;box-shadow:var(--shadow)}
+.thumb{position:relative}
+.thumb-x{position:absolute;top:-10px;right:-10px;width:30px;height:30px;border-radius:50%;border:2px solid var(--sheet);background:var(--bad);color:#fff;font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
 .note{border-radius:10px;padding:10px 14px;background:var(--warn-bg);font-size:.9rem}
 .note.bad{background:var(--bad-bg);color:var(--bad)}
 
@@ -225,8 +227,8 @@ const Store = {
     S.loaded = true;
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
     $("#storeNote").textContent = standalone
-      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026 e"
-      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026 e";
+      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026 f"
+      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026 f";
     afterData();
     checkImport();
   },
@@ -418,7 +420,11 @@ function viewNew(){
       ondragover:e=>{e.preventDefault();drop.classList.add("over");}, ondragleave:()=>drop.classList.remove("over"),
       ondrop:e=>{e.preventDefault();drop.classList.remove("over");addFiles(e.dataTransfer.files);}},
     d.files.length
-      ? h("div",{class:"thumbs"}, d.files.map(f=>h("img",{src:f.url,alt:"Foto des Vokabelzettels"})))
+      ? h("div",{class:"thumbs"}, d.files.map((f,fi)=>h("div",{class:"thumb"},
+          h("img",{src:f.url,alt:`Foto ${fi+1}`}),
+          d.busy ? null : h("button",{class:"thumb-x",type:"button","aria-label":`Foto ${fi+1} entfernen`,onclick:e=>{
+            e.stopPropagation(); d.files.splice(fi,1); d.error=""; renderMain();
+          }},"×"))))
       : h("strong",null,"Vokabelzettel fotografieren"),
     h("span",{class:"small muted"}, d.files.length ? "Tippen, um weitere Seiten hinzuzufügen" : "Kamera oder Fotos · auch mehrere Seiten"),
     fileIn);
@@ -736,7 +742,23 @@ function viewReview(){
         h("button",{class:"btn ghost mini",onclick:()=>{d.showPage[pg.no]=!shown;renderMain();setTimeout(()=>$(`#page-${pg.no}`)?.scrollIntoView({block:"start"}));}}, shown ? "Foto ausblenden" : "Foto ansehen")),
       pg.skipped ? h("p",{class:"small warnline"},`${pg.skipped} Stelle${pg.skipped>1?"n":""} auf diesem Foto nicht lesbar. Bitte mit dem Foto vergleichen und fehlende Vokabeln ergänzen.`) : null,
       shown ? h("img",{class:"page-img",src:pg.url,alt:`Foto ${pg.no}`}) : null,
-      h("button",{class:"btn ghost mini",onclick:addHere},`+ Zeile zu Foto ${pg.no}`));
+      d.delPage === pg.no
+        ? h("div",{class:"row"},
+            h("span",{class:"small grow"},`Foto ${pg.no} und seine ${d.pairs.filter(q=>q.page===pg.no).length} Vokabeln löschen?`),
+            h("button",{class:"btn danger mini",onclick:()=>removePage(pg.no)},"Löschen"),
+            h("button",{class:"btn ghost mini",onclick:()=>{d.delPage=null;renderMain();}},"Abbrechen"))
+        : h("div",{class:"row"},
+            h("button",{class:"btn ghost mini grow",onclick:addHere},`+ Zeile zu Foto ${pg.no}`),
+            h("button",{class:"btn danger mini",onclick:()=>{d.delPage=pg.no;renderMain();}},"Foto löschen")));
+  };
+  const removePage = no => {
+    d.pairs = d.pairs.filter(q => q.page !== no);
+    d.pages = pages.filter(x => x.no !== no);
+    // renumber the remaining photos 1, 2, 3 …
+    const map = {}; d.pages.forEach((x, k) => { map[x.no] = k + 1; x.no = k + 1; });
+    d.pairs.forEach(q => { if (q.page) q.page = map[q.page]; });
+    d.delPage = null; d.showPage = {}; d.note = `Foto ${no} wurde gelöscht.`;
+    renderMain();
   };
   const rows = []; let cur = null;
   const hasOld = pages.length && d.pairs.some(p => !p.page);
