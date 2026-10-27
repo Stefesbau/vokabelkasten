@@ -152,7 +152,6 @@
     const flag = /\s\?$/.test(t); t = t.replace(/\s\?$/, "");
     let tok = t.split(" ").filter(Boolean);
     if (tok.length >= 2 && /^[\p{Ll}(]/u.test(tok[0])) {
-      tok = tok.filter((w, i) => i === 0 || !/^[\p{Lu}][\p{Ll}]+[.,;]?$/u.test(w) || w === "I");
       const last = tok[tok.length - 1];
       if (tok.length >= 2 && /^\p{Ll}{1,2}$/u.test(last) && !SHORT.has(last)) {
         tok.splice(tok.length - 2, 2, tok[tok.length - 2] + last);
@@ -167,7 +166,18 @@
     if (!words.length) return [];
     const { rows } = groupRows(words, angle);
     rows.forEach(dropPhonetics);
-    return rows.filter(r => r.words.length).map(r => ({ y: r.cy, text: textOf(r.words) })).filter(l => l.text);
+    return rows.filter(r => r.words.length)
+      .filter(r => {
+        // unreadable scraps (shadows, page edge): low confidence or almost no letters
+        const ws = r.words.filter(w => /\p{L}/u.test(w.text));
+        if (!ws.length) return false;
+        const conf = ws.reduce((s, w) => s + (w.conf ?? 100), 0) / ws.length;
+        const letters = ws.map(w => w.text).join("").replace(/[^\p{L}]/gu, "").length;
+        if (conf < 35) return false;
+        if (letters <= 3 && conf < 80) return false;
+        return true;
+      })
+      .map(r => ({ y: r.cy, text: textOf(r.words), words: r.words })).filter(l => l.text);
   }
 
   /* Match left and right lines by height. The vertical shift between the two
@@ -177,7 +187,9 @@
     let A = columnLines(leftWords, angle), B = columnLines(rightWords, angle);
     let swapped = false;
     if (deScore(A.map(l => l.text)) > deScore(B.map(l => l.text)) + 0.15) { const t = A; A = B; B = t; swapped = true; }
-    A = A.map(l => ({ ...l, text: fxFix(stripPhon(l.text)) })).filter(l => l.text.replace(/\s\?$/, "").length > 0);
+    // behind a lower-case entry, an unsure capitalised scrap is misread phonetics ("centre Ltti")
+    const dropScraps = ws => ws.filter((w, i) => i === 0 || !/^[a-z]/.test(ws[0].text) || !/^\p{Lu}/u.test(w.text) || (w.conf ?? 100) >= 70 || w.text === "I");
+    A = A.map(l => ({ ...l, text: fxFix(stripPhon(textOf(dropScraps(l.words)))) })).filter(l => l.text.replace(/\s\?$/, "").length > 0);
     A.sort((a, b) => a.y - b.y); B.sort((a, b) => a.y - b.y);
 
     const tol = h * 0.8;
@@ -221,7 +233,42 @@
     return { pairs: out, title: best.title, swapped };
   }
 
+  /* On curved pages OCR sometimes cuts one bold word into two pieces that
+     land on different text lines: "cent"+"re", "advi"+"ce", "surpri"+"Prise".
+     Pieces that touch or overlap side by side are joined again. */
+  function mergeSplitWords(words) {
+    if (!words.some(w => w.line !== undefined)) return words;
+    const ws = words.map(w => ({ ...w })).sort((a, b) => a.x0 - b.x0);
+    const LET = /^[\p{L}][\p{L}'’-]*$/u;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      outer: for (let i = 0; i < ws.length; i++) {
+        const a = ws[i]; if (!LET.test(a.text)) continue;
+        for (let j = 0; j < ws.length; j++) {
+          const b = ws[j];
+          if (i === j || b.line === a.line || !/^[\p{L}][\p{L}'’-]*[.,;]?$/u.test(b.text)) continue;
+          if (b.x0 <= a.x0) continue;
+          const ha = a.y1 - a.y0, hb = b.y1 - b.y0, h = Math.min(ha, hb);
+          const gap = b.x0 - a.x1;
+          const vov = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+          if (gap > h * 0.3 || gap < -Math.max(ha, hb) * 2 || vov < h * 0.4) continue;
+          // drop letters both pieces share ("surpri" + "Prise" → "surprise")
+          const A = a.text, B = b.text; let k = 0;
+          for (let n = Math.min(A.length, B.length) - 1; n >= 2; n--) if (A.slice(-n).toLowerCase() === B.slice(0, n).toLowerCase()) { k = n; break; }
+          if (gap < -h * 0.5 && k === 0) continue;
+          a.text = A + B.slice(k);
+          a.x1 = Math.max(a.x1, b.x1); a.y0 = Math.min(a.y0, b.y0); a.y1 = Math.max(a.y1, b.y1);
+          a.conf = Math.min(a.conf ?? 100, b.conf ?? 100);
+          ws.splice(j, 1); changed = true; break outer;
+        }
+      }
+    }
+    return ws;
+  }
+
   function pairFromWords(words, opts = {}) {
+    words = mergeSplitWords(words);
     const { rows, hMed } = groupRows(words, opts.angle);
     rows.forEach(dropPhonetics);
     const live = rows.filter(r => r.words.length);
@@ -290,7 +337,7 @@
     return { pairs, title, note, swapped, columns: bounds.length + 1 };
   }
 
-  const api = { pairFromWords, groupRows, findBoundaries, tiltFromBaselines };
+  const api = { mergeSplitWords, pairFromWords, groupRows, findBoundaries, tiltFromBaselines };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.VkPair = api;
 })(typeof self !== "undefined" ? self : this);

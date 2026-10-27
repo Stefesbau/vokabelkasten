@@ -215,8 +215,8 @@ const Store = {
     S.loaded = true;
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
     $("#storeNote").textContent = standalone
-      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026 b"
-      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026 b";
+      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026 c"
+      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026 c";
     afterData();
     checkImport();
   },
@@ -554,7 +554,7 @@ async function recognize(){
         const canvas = await prepImage(d.files[page].blob, attempt);
         await worker.setParameters({tessedit_pageseg_mode: attempt.psm || "3"});
         const { data } = await worker.recognize(canvas);
-        const words = (data.words || []).map(w => ({text:w.text, conf:w.confidence, x0:w.bbox.x0, y0:w.bbox.y0, x1:w.bbox.x1, y1:w.bbox.y1}));
+        const words = (data.lines || []).flatMap((l, li) => (l.words || []).map(w => ({text:w.text, conf:w.confidence, line:li, x0:w.bbox.x0, y0:w.bbox.y0, x1:w.bbox.x1, y1:w.bbox.y1})));
         const angle = VkPair.tiltFromBaselines((data.lines || []).map(l => l.baseline));
         const r = VkPair.pairFromWords(words, {angle});
         const q = quality(r);
