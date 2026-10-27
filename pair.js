@@ -166,18 +166,20 @@
     if (!words.length) return [];
     const { rows } = groupRows(words, angle);
     rows.forEach(dropPhonetics);
-    return rows.filter(r => r.words.length)
+    let skipped = 0;
+    const out = rows.filter(r => r.words.length)
       .filter(r => {
         // unreadable scraps (shadows, page edge): low confidence or almost no letters
         const ws = r.words.filter(w => /\p{L}/u.test(w.text));
         if (!ws.length) return false;
         const conf = ws.reduce((s, w) => s + (w.conf ?? 100), 0) / ws.length;
         const letters = ws.map(w => w.text).join("").replace(/[^\p{L}]/gu, "").length;
-        if (conf < 35) return false;
-        if (letters <= 3 && conf < 80) return false;
+        if (conf < 35 || (letters <= 3 && conf < 80)) { if (letters >= 3) skipped++; return false; }
         return true;
       })
       .map(r => ({ y: r.cy, text: textOf(r.words), words: r.words })).filter(l => l.text);
+    out.skipped = skipped;
+    return out;
   }
 
   /* Match left and right lines by height. The vertical shift between the two
@@ -185,6 +187,7 @@
      tilted photos still line up. */
   function alignColumns(leftWords, rightWords, angle, h) {
     let A = columnLines(leftWords, angle), B = columnLines(rightWords, angle);
+    const skipped = (A.skipped || 0) + (B.skipped || 0);
     let swapped = false;
     if (deScore(A.map(l => l.text)) > deScore(B.map(l => l.text)) + 0.15) { const t = A; A = B; B = t; swapped = true; }
     // behind a lower-case entry, an unsure capitalised scrap is misread phonetics ("centre Ltti")
@@ -230,7 +233,7 @@
       if (!best || r.score > best.score + 1e-9 || (Math.abs(r.score - best.score) < 1e-9 && Math.abs(s) < Math.abs(best.s))) best = { ...r, s };
     }
     const out = best.pairs.map(p => ({ fx: p.fx, de: fixDe(p.de).replace(/[,;]\s*$/, "") }));
-    return { pairs: out, title: best.title, swapped };
+    return { pairs: out, title: best.title, swapped, skipped };
   }
 
   /* On curved pages OCR sometimes cuts one bold word into two pieces that

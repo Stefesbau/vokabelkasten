@@ -148,6 +148,10 @@ html,body{margin:0}
 img{max-width:100%}
 body{padding-top:calc(12px + env(safe-area-inset-top,0px));padding-bottom:calc(48px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));-webkit-text-size-adjust:100%}
 input,select,textarea{font-size:16px}
+.page-div{margin-top:14px;padding:10px 12px;background:var(--paper);border-radius:10px;border-left:4px solid var(--blue);display:flex;flex-direction:column;gap:8px;scroll-margin-top:calc(12px + env(safe-area-inset-top,0px))}
+.page-img{width:100%;max-height:75vh;object-fit:contain;border-radius:8px;background:var(--sheet)}
+.btn.mini{min-height:36px;padding:6px 12px;font-size:.875rem}
+.warnline{color:var(--bad);margin:0}
 </style>
 </head>
 <body>
@@ -215,8 +219,8 @@ const Store = {
     S.loaded = true;
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
     $("#storeNote").textContent = standalone
-      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026 c"
-      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026 c";
+      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026 d"
+      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026 d";
     afterData();
     checkImport();
   },
@@ -526,6 +530,9 @@ async function recognize(){
   d.progress = {label:"Texterkennung wird geladen …", pct:0};
   renderMain();
   const n = d.files.length; let page = 0;
+  if (!d.append) d.pages = [];
+  d.pages = d.pages || [];
+  const pageBase = d.pages.length;
   ocrProgress = m => {
     if (d.cancelled) return;
     if (m.status === "recognizing text") { const l = $("#ocrLabel"); if (l && !/Versuch/.test(l.textContent)) setProgress(n > 1 ? `Seite ${page+1} von ${n} wird gelesen …` : "Text wird gelesen …", (page + (m.progress||0)) / n); }
@@ -562,6 +569,9 @@ async function recognize(){
         if ((data.text || "").trim().length > rawText.length) rawText = (data.text || "").trim();
       }
       if (!res.pairs.length && rawText) raw.push(rawText);
+      const no = pageBase + page + 1;
+      res.pairs.forEach(p => { p.page = no; });
+      d.pages.push({no, url: d.files[page].url, count: res.pairs.length, skipped: res.skipped || 0});
       all.push(...res.pairs);
       if (!title && res.title) title = res.title;
       if (res.note) notes.add(res.note);
@@ -580,10 +590,11 @@ async function recognize(){
     }
     if (!all.length) throw {code:"empty"};
     if (!d.title && title) d.title = title.slice(0, 80);
-    const fresh = all.map(p => ({id:uid(), fx:p.fx, de:p.de, box:0}));
+    const fresh = all.map(p => ({id:uid(), fx:p.fx, de:p.de, box:0, page:p.page}));
+    d.scrollTo = pageBase + 1;
     if (d.append) {
       d.pairs = [...(d.pairs || []), ...fresh];
-      notes.add(`${fresh.length} Vokabeln vom neuen Foto unten angehängt.`);
+      notes.add(`${fresh.length} Vokabeln vom neuen Foto angehängt – sie stehen unter „Foto ${pageBase + 1}“.`);
     } else d.pairs = fresh;
     d.append = false; d.files = [];
     d.note = [...notes].join(" ");
@@ -622,10 +633,39 @@ function editList(l){
 function viewReview(){
   const d = S.draft; const L = LANGS[d.lang];
   const bad = p => /\s\?$/.test(p.fx) || /\s\?$/.test(p.de) || !p.fx.trim() || !p.de.trim();
-  const rows = d.pairs.map((p,i) => h("div",{class:"edit-row"+(bad(p)?" flag":"")},
-    h("input",{id:`fx-${p.id}`,value:p.fx,placeholder:"fehlt","aria-label":`${L.name} Zeile ${i+1}`,oninput:e=>p.fx=e.target.value}),
-    h("input",{id:`de-${p.id}`,value:p.de,placeholder:"fehlt","aria-label":`Deutsch Zeile ${i+1}`,oninput:e=>p.de=e.target.value}),
-    h("button",{class:"x","aria-label":`Zeile ${i+1} entfernen`,onclick:()=>{d.pairs.splice(i,1);renderMain();}},"×")));
+  const pages = d.pages || [];
+  d.showPage = d.showPage || {};
+  const pageDiv = pg => {
+    const shown = d.showPage[pg.no] ?? (pg.skipped > 0);
+    const addHere = () => {
+      let at = -1; d.pairs.forEach((q, k) => { if (q.page === pg.no) at = k; });
+      const np = {id:uid(), fx:"", de:"", box:0, page:pg.no};
+      d.pairs.splice(at < 0 ? d.pairs.length : at + 1, 0, np); renderMain();
+      setTimeout(() => $(`#fx-${np.id}`)?.focus());
+    };
+    return h("div",{class:"page-div",id:`page-${pg.no}`},
+      h("div",{class:"row"},
+        h("strong",null,`Foto ${pg.no}`),
+        h("span",{class:"small muted grow"},`${d.pairs.filter(q=>q.page===pg.no).length} Vokabeln`),
+        h("button",{class:"btn ghost mini",onclick:()=>{d.showPage[pg.no]=!shown;renderMain();setTimeout(()=>$(`#page-${pg.no}`)?.scrollIntoView({block:"start"}));}}, shown ? "Foto ausblenden" : "Foto ansehen")),
+      pg.skipped ? h("p",{class:"small warnline"},`${pg.skipped} Stelle${pg.skipped>1?"n":""} auf diesem Foto nicht lesbar. Bitte mit dem Foto vergleichen und fehlende Vokabeln ergänzen.`) : null,
+      shown ? h("img",{class:"page-img",src:pg.url,alt:`Foto ${pg.no}`}) : null,
+      h("button",{class:"btn ghost mini",onclick:addHere},`+ Zeile zu Foto ${pg.no}`));
+  };
+  const rows = []; let cur = null;
+  const hasOld = pages.length && d.pairs.some(p => !p.page);
+  if (hasOld) rows.push(h("div",{class:"page-div"},h("strong",null,"Bereits gespeichert")));
+  d.pairs.forEach((p,i) => {
+    if (p.page && p.page !== cur) { cur = p.page; const pg = pages.find(x => x.no === p.page); if (pg) rows.push(pageDiv(pg)); }
+    rows.push(h("div",{class:"edit-row"+(bad(p)?" flag":"")},
+      h("input",{id:`fx-${p.id}`,value:p.fx,placeholder:"fehlt","aria-label":`${L.name} Zeile ${i+1}`,oninput:e=>p.fx=e.target.value}),
+      h("input",{id:`de-${p.id}`,value:p.de,placeholder:"fehlt","aria-label":`Deutsch Zeile ${i+1}`,oninput:e=>p.de=e.target.value}),
+      h("button",{class:"x","aria-label":`Zeile ${i+1} entfernen`,onclick:()=>{d.pairs.splice(i,1);renderMain();}},"×")));
+  });
+  // photos where nothing was recognised still get their marker at the end
+  pages.filter(pg => !d.pairs.some(q => q.page === pg.no)).forEach(pg => rows.push(pageDiv(pg)));
+  if (d.scrollTo && d.scrollTo > 1) { const t = d.scrollTo; setTimeout(() => $(`#page-${t}`)?.scrollIntoView({block:"start", behavior:"smooth"}), 50); }
+  d.scrollTo = null;
   const flagged = d.pairs.filter(bad).length;
   return h("div",{class:"sheet"},
     h("div",null,h("p",{class:"label"},d.id?"Liste bearbeiten":"Erkannt – bitte kurz prüfen"),h("h2",null,"Stimmt alles?")),
