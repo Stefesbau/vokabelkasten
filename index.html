@@ -152,6 +152,12 @@ input,select,textarea{font-size:16px}
 .page-img{width:100%;max-height:75vh;object-fit:contain;border-radius:8px;background:var(--sheet)}
 .btn.mini{min-height:36px;padding:6px 12px;font-size:.875rem}
 .warnline{color:var(--bad);margin:0}
+.crop-stage{display:flex;justify-content:center;background:var(--paper);border-radius:10px;padding:8px}
+.crop-wrap{position:relative;display:inline-block;max-width:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;line-height:0}
+.crop-wrap img{display:block;max-width:100%;max-height:65vh;-webkit-touch-callout:none;pointer-events:none}
+.crop-rect{position:absolute;border:2px solid var(--marker);box-shadow:0 0 0 9999px rgba(10,15,30,.55);cursor:move}
+.crop-h{position:absolute;width:34px;height:34px;border-radius:50%;background:var(--marker);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.crop-h.nw{left:-8px;top:-8px}.crop-h.ne{right:-8px;top:-8px}.crop-h.sw{left:-8px;bottom:-8px}.crop-h.se{right:-8px;bottom:-8px}
 </style>
 </head>
 <body>
@@ -219,8 +225,8 @@ const Store = {
     S.loaded = true;
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
     $("#storeNote").textContent = standalone
-      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026 d"
-      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026 d";
+      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026 e"
+      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026 e";
     afterData();
     checkImport();
   },
@@ -340,7 +346,8 @@ function renderMain(){
     v==="setup" ? viewSetup() :
     v==="practice" ? viewPractice() :
     v==="done" ? viewDone() :
-    v==="import" ? viewImport() : "");
+    v==="import" ? viewImport() :
+    v==="crop" ? viewCrop() : "");
 }
 
 /* ---------- lists ---------- */
@@ -450,9 +457,88 @@ function viewNew(){
 function addFiles(list){
   const d = S.draft; const max = 6;
   const arr = Array.from(list||[]).filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|heic|webp)$/i.test(f.name));
-  for (const f of arr) { if (d.files.length >= max) break; d.files.push({blob:f, url:URL.createObjectURL(f)}); }
+  const added = [];
+  for (const f of arr) { if (d.files.length >= max) break; const it = {blob:f, url:URL.createObjectURL(f)}; d.files.push(it); added.push(it); }
   d.error = arr.length && d.files.length >= max ? `Höchstens ${max} Fotos auf einmal.` : "";
-  renderMain();
+  if (added.length) startCrop(added, () => go("new"), () => go("new"));
+  else renderMain();
+}
+
+/* ---------- crop a photo to the part with the vocabulary ---------- */
+function startCrop(items, done, cancel){
+  S.crop = {items, i:0, done, cancel, r:{x:0, y:0, w:1, h:1}};
+  go("crop");
+}
+function viewCrop(){
+  const c = S.crop; if (!c) { S.view = "lists"; return viewLists(); }
+  const it = c.items[c.i];
+  const rect = h("div",{class:"crop-rect",id:"cropRect"},
+    ["nw","ne","sw","se"].map(k => h("span",{class:"crop-h "+k,"data-h":k})));
+  const img = h("img",{src:it.url,alt:"Foto zum Zuschneiden",draggable:"false",onload:()=>place()});
+  const wrap = h("div",{class:"crop-wrap",id:"cropWrap"}, img, rect);
+  const place = () => {
+    const r = c.r;
+    Object.assign(rect.style,{left:r.x*100+"%",top:r.y*100+"%",width:r.w*100+"%",height:r.h*100+"%"});
+  };
+  place();
+  // drag corners to resize, drag inside to move (finger or mouse)
+  let drag = null;
+  wrap.addEventListener("pointerdown", e => {
+    const hd = e.target.closest(".crop-h"); const inRect = e.target.closest(".crop-rect");
+    if (!hd && !inRect) return;
+    e.preventDefault(); wrap.setPointerCapture(e.pointerId);
+    drag = {mode: hd ? hd.dataset.h : "move", x:e.clientX, y:e.clientY, r:{...c.r}};
+  });
+  wrap.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const b = wrap.getBoundingClientRect();
+    const dx = (e.clientX - drag.x) / b.width, dy = (e.clientY - drag.y) / b.height;
+    const o = drag.r, min = .08; let {x,y,w,h:hh} = o;
+    if (drag.mode === "move") { x = Math.min(1-w, Math.max(0, o.x+dx)); y = Math.min(1-hh, Math.max(0, o.y+dy)); }
+    else {
+      if (drag.mode.includes("w")) { x = Math.min(o.x+o.w-min, Math.max(0, o.x+dx)); w = o.x+o.w-x; }
+      if (drag.mode.includes("e")) { w = Math.min(1-o.x, Math.max(min, o.w+dx)); }
+      if (drag.mode.includes("n")) { y = Math.min(o.y+o.h-min, Math.max(0, o.y+dy)); hh = o.y+o.h-y; }
+      if (drag.mode.includes("s")) { hh = Math.min(1-o.y, Math.max(min, o.h+dy)); }
+    }
+    c.r = {x,y,w,h:hh}; place();
+  });
+  const end = () => { drag = null; };
+  wrap.addEventListener("pointerup", end); wrap.addEventListener("pointercancel", end);
+  const next = () => {
+    c.i++; c.r = {x:0, y:0, w:1, h:1};
+    if (c.i >= c.items.length) { const f = c.done; S.crop = null; f(); } else renderMain();
+  };
+  return h("div",{class:"sheet"},
+    h("div",null,
+      h("p",{class:"label"}, c.items.length > 1 ? `Foto ${c.i+1} von ${c.items.length}` : "Foto zuschneiden"),
+      h("h2",null,"Nur die Vokabeln einrahmen")),
+    h("p",{class:"small muted"},"Ziehe die Ecken des Rahmens, bis nur die Vokabelliste darin ist. Überschriften, Bilder und Ränder kannst du weglassen."),
+    h("div",{class:"crop-stage"}, wrap),
+    h("div",{class:"row"},
+      h("button",{class:"btn hl grow",onclick:async e=>{
+        e.currentTarget.disabled = true; e.currentTarget.textContent = "Wird zugeschnitten …";
+        try { await applyCrop(it, c.r); } catch {}
+        next();
+      }},"Zuschneiden"),
+      h("button",{class:"btn ghost",onclick:next},"Ganzes Foto")),
+    h("button",{class:"btn ghost",onclick:()=>{
+      const f = c.cancel; const d = S.draft;
+      if (d) d.files = d.files.filter(x => !c.items.includes(x));
+      S.crop = null; f();
+    }},"Abbrechen")
+  );
+}
+async function applyCrop(it, r){
+  if (r.x < .01 && r.y < .01 && r.w > .98 && r.h > .98) return;
+  const img = new Image(); img.src = it.url; await img.decode();
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const sx = Math.round(r.x*W), sy = Math.round(r.y*H), sw = Math.round(r.w*W), sh = Math.round(r.h*H);
+  const cv = document.createElement("canvas"); cv.width = sw; cv.height = sh;
+  cv.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  const blob = await new Promise(res => cv.toBlob(res, "image/jpeg", 0.93));
+  if (!blob) return;
+  it.blob = blob; it.url = URL.createObjectURL(blob);
 }
 
 /* ---------- text recognition on the device (Tesseract) ---------- */
@@ -688,7 +774,8 @@ function viewReview(){
       const fs = Array.from(e.target.files||[]).slice(0,6); e.target.value = "";
       if (!fs.length) return;
       d.files = fs.map(f => ({blob:f, url:URL.createObjectURL(f)})); d.append = true; d.error = ""; d.note = "";
-      S.view = "new"; renderMain(); recognize();
+      startCrop(d.files.slice(), () => { S.view = "new"; renderMain(); recognize(); },
+        () => { d.append = false; d.files = []; go("review"); });
     }}),
     h("button",{class:"btn ghost",onclick:()=>$("#moreIn").click()},"+ Weitere Seite fotografieren"),
     h("div",{class:"row"},
