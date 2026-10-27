@@ -227,8 +227,8 @@ const Store = {
     S.loaded = true;
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
     $("#storeNote").textContent = standalone
-      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026 f"
-      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026 f";
+      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026 g"
+      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026 g";
     afterData();
     checkImport();
   },
@@ -586,7 +586,7 @@ async function prepImage(file, opts = {}){
     const img = new Image(); img.src = url; await img.decode();
     const big = Math.max(img.naturalWidth, img.naturalHeight);
     // small pictures (screenshots) are enlarged, large photos reduced
-    const sc = Math.min(opts.upscale ? 3 : 2, 2600 / big);
+    const sc = Math.min(opts.upscale ? 3 : 2, (opts.upscale ? 2600 : 2200) / big);
     const c = document.createElement("canvas");
     c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
     const g = c.getContext("2d", {willReadFrequently:true});
@@ -632,7 +632,7 @@ async function recognize(){
   };
   try {
     await loadTesseract();
-    const worker = await getWorker(d.lang);
+    let worker = await getWorker(d.lang);
     const all = []; const notes = new Set(); let title = ""; const raw = [];
     for (page = 0; page < n; page++) {
       if (d.cancelled) break;
@@ -651,8 +651,16 @@ async function recognize(){
         if (ai === 2 && res && res.pairs.length >= 3 && quality(res) >= res.pairs.length * 1.6) break;
         if (ai > 0) setProgress(n > 1 ? `Seite ${page+1} von ${n}: Versuch ${ai+1} von 3 …` : `Versuch ${ai+1} von 3 …`, (page + ai / 3) / n);
         const canvas = await prepImage(d.files[page].blob, attempt);
+        worker = await getWorker(d.lang);
         await worker.setParameters({tessedit_pageseg_mode: attempt.psm || "3"});
-        const { data } = await worker.recognize(canvas);
+        let { data } = await worker.recognize(canvas);
+        if (!(data.words || []).length) {
+          // the phone may have run short of memory – restart the recogniser and try once more
+          stopOcr(); const w2 = await getWorker(d.lang);
+          await w2.setParameters({tessedit_pageseg_mode: attempt.psm || "3"});
+          ({ data } = await w2.recognize(canvas));
+        }
+        canvas.width = canvas.height = 1;
         const words = (data.lines || []).flatMap((l, li) => (l.words || []).map(w => ({text:w.text, conf:w.confidence, line:li, x0:w.bbox.x0, y0:w.bbox.y0, x1:w.bbox.x1, y1:w.bbox.y1})));
         const angle = VkPair.tiltFromBaselines((data.lines || []).map(l => l.baseline));
         const r = VkPair.pairFromWords(words, {angle});
@@ -740,6 +748,7 @@ function viewReview(){
         h("strong",null,`Foto ${pg.no}`),
         h("span",{class:"small muted grow"},`${d.pairs.filter(q=>q.page===pg.no).length} Vokabeln`),
         h("button",{class:"btn ghost mini",onclick:()=>{d.showPage[pg.no]=!shown;renderMain();setTimeout(()=>$(`#page-${pg.no}`)?.scrollIntoView({block:"start"}));}}, shown ? "Foto ausblenden" : "Foto ansehen")),
+      !d.pairs.some(q=>q.page===pg.no) ? h("p",{class:"small warnline"},"Auf diesem Foto wurden keine Vokabeln erkannt. Foto löschen und neu aufnehmen: näher heran, gerade, und mit dem Rahmen nur die Liste auswählen.") :
       pg.skipped ? h("p",{class:"small warnline"},`${pg.skipped} Stelle${pg.skipped>1?"n":""} auf diesem Foto nicht lesbar. Bitte mit dem Foto vergleichen und fehlende Vokabeln ergänzen.`) : null,
       shown ? h("img",{class:"page-img",src:pg.url,alt:`Foto ${pg.no}`}) : null,
       d.delPage === pg.no

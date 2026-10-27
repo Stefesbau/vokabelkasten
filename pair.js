@@ -194,6 +194,20 @@
     const dropScraps = ws => ws.filter((w, i) => i === 0 || !/^[a-z]/.test(ws[0].text) || !/^\p{Lu}/u.test(w.text) || (w.conf ?? 100) >= 70 || w.text === "I");
     A = A.map(l => ({ ...l, text: fxFix(stripPhon(textOf(dropScraps(l.words)))) })).filter(l => l.text.replace(/\s\?$/, "").length > 0);
     A.sort((a, b) => a.y - b.y); B.sort((a, b) => a.y - b.y);
+    {
+      const merged = [];
+      for (const l of A) {
+        const prev = merged[merged.length - 1];
+        if (prev && l.y - prev.y < h * 0.6) {
+          const t = l.text.replace(/\s\?$/, "");
+          // a lone short scrap is left-over phonetics ("vais"), anything else belongs to the entry
+          if (!(t.split(" ").length === 1 && /^\p{Ll}{1,6}$/u.test(t))) prev.text = (prev.text.replace(/\s\?$/, "") + " " + l.text).trim();
+          continue;
+        }
+        merged.push({ ...l });
+      }
+      A = merged;
+    }
 
     const tol = h * 0.8;
     // one pass down the page, starting with shift d0, adapting the shift on every match
@@ -274,7 +288,15 @@
     words = mergeSplitWords(words);
     const { rows, hMed } = groupRows(words, opts.angle);
     rows.forEach(dropPhonetics);
-    const live = rows.filter(r => r.words.length);
+    let headTitle = "";
+    const live = rows.filter(r => r.words.length).filter(r => {
+      const rh = median(r.words.map(w => w.h));
+      if (rh > hMed * 1.45 && r.words.length >= 2) {
+        if (!headTitle) headTitle = clean(r.words.map(w => w.text).join(" "));
+        return false;
+      }
+      return true;
+    });
     const bounds = findBoundaries(live, hMed);
     let table; // [[col0, col1, ...] per row]
     let note = "";
@@ -300,7 +322,7 @@
         const colOf = w => { const cx = (w.x0 + w.x1) / 2; let c = 0; while (c < bounds.length && cx > bounds[c]) c++; return c; };
         const all = live.flatMap(r => r.words);
         const res = alignColumns(all.filter(w => colOf(w) === keep[0]), all.filter(w => colOf(w) === keep[1]), opts.angle, hMed);
-        return { ...res, note, columns: nCols };
+        return { ...res, title: headTitle || res.title, note, columns: nCols };
       }
       table = table.map(r => [r[keep[0]] || "", r[keep[1]] || ""]);
     } else {
