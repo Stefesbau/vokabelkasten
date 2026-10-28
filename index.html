@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Vokabelkasten</title>
+<title>Vokabel-App</title>
 <meta name="description" content="Vokabelzettel fotografieren und Vokabeln schriftlich üben.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png" type="image/png">
@@ -154,6 +154,16 @@ input,select,textarea{font-size:16px}
 .page-img{width:100%;max-height:75vh;object-fit:contain;border-radius:8px;background:var(--sheet)}
 .btn.mini{min-height:36px;padding:6px 12px;font-size:.875rem}
 .warnline{color:var(--bad);margin:0}
+#bg{position:fixed;inset:0;z-index:-1;pointer-events:none}
+body.has-bg{background:transparent}
+html{background:var(--paper)}
+body.has-bg .top, body.has-bg .tabs, body.has-bg #storeNote, body.has-bg .progress2{background:var(--sheet);border-radius:12px;padding:8px 12px;box-shadow:var(--shadow)}
+body.has-bg .tab{margin-bottom:0}
+.bg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px}
+.bg-tile{display:flex;flex-direction:column;align-items:center;gap:6px;border:3px solid transparent;border-radius:14px;padding:6px;background:var(--paper);cursor:pointer;color:var(--ink)}
+.bg-tile.on{border-color:var(--blue)}
+.bg-prev{width:100%;aspect-ratio:3/4;border-radius:10px;border:1px solid var(--rule);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.bg-plus{font-size:2rem;color:var(--ink-soft);font-weight:700}
 body.practicing .top, body.practicing .tabs, body.practicing #storeNote{display:none}
 body.practicing .wrap{gap:10px}
 .practice{display:flex;flex-direction:column;gap:10px}
@@ -182,9 +192,10 @@ body.practicing .wrap{gap:10px}
 </head>
 <body>
 
+<div id="bg" aria-hidden="true"></div>
 <div class="wrap">
   <header class="top">
-    <div class="brand"><h1>Vokabel<mark>kasten</mark></h1></div>
+    <div class="brand"><h1>Vokabel-<mark>App</mark></h1></div>
     <div class="kids" id="kids"></div>
   </header>
   <nav class="tabs" role="tablist" id="tabs">
@@ -245,8 +256,8 @@ const Store = {
     S.loaded = true;
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
     $("#storeNote").textContent = standalone
-      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 28.10.2026 c"
-      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 28.10.2026 c";
+      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 28.10.2026 d"
+      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet die Vokabel-App wie eine richtige App. Deine Listen bleiben auf diesem Gerät. Version 28.10.2026 d";
     afterData();
     checkImport();
   },
@@ -271,7 +282,7 @@ function b64uDecode(s){
 function checkImport(text){
   const fromPaste = typeof text === "string";
   const m = (fromPaste ? text : location.hash).match(/#import=([A-Za-z0-9_-]+)/);
-  if (!m) { if (fromPaste) { S.draft && (S.draft.error = "Das ist kein Vokabelkasten-Link. Kopiere den ganzen Link aus der Nachricht."); renderMain(); } return; }
+  if (!m) { if (fromPaste) { S.draft && (S.draft.error = "Das ist kein Link aus der Vokabel-App. Kopiere den ganzen Link aus der Nachricht."); renderMain(); } return; }
   try {
     const o = JSON.parse(b64uDecode(m[1]));
     const pairs = (Array.isArray(o.p) ? o.p : []).filter(x => Array.isArray(x) && x[0] && x[1])
@@ -296,7 +307,7 @@ function viewImport(){
     h("div",{class:"heft","aria-hidden":"true"},
       im.pairs.slice(0,6).map(p => [h("div",null,p.fx), h("div",null,p.de)]),
       im.pairs.length>6 ? h("div",{class:"more"}, `+ ${im.pairs.length-6} weitere`) : null),
-    !standalone ? h("p",{class:"note"},"Hast du den Vokabelkasten auf dem Home-Bildschirm? Dann kopiere den Link aus der Nachricht und füge ihn dort unter „Neue Liste“ → „Liste aus Link übernehmen“ ein. Nur so landet die Liste in deiner App.") : null,
+    !standalone ? h("p",{class:"note"},"Hast du die Vokabel-App auf dem Home-Bildschirm? Dann kopiere den Link aus der Nachricht und füge ihn dort unter „Neue Liste“ → „Liste aus Link übernehmen“ ein. Nur so landet die Liste in deiner App.") : null,
     k ? h("div",{class:"row"},
           h("button",{class:"btn hl grow",onclick:async()=>{
             await Store.putList({id:uid(), profileId:k.id, title:im.title || `${L.name} ${fmtDate(Date.now())}`, lang:im.lang,
@@ -324,7 +335,66 @@ const kidOf = id => S.profiles.find(p => p.id === id);
 const curKid = () => kidOf(S.kid);
 
 /* ---------- header ---------- */
+
+/* ---------- background (per person, on this device) ---------- */
+const BGS = [
+  {id:"none", name:"Standard", css:""},
+  {id:"meer", name:"Meer", css:"radial-gradient(circle at 80% 14%, #fff6c4 0 4%, rgba(255,246,196,0) 9%), url('WAVES') 0 58%/200px 40px repeat-x, url('WAVES') 60px 72%/240px 48px repeat-x, linear-gradient(180deg,#8fd8f8 0%,#d3f1fc 44%,#3aa6d8 45%,#1678b5 72%,#0b4f86 100%)"},
+  {id:"fussball", name:"Fußballrasen", css:"linear-gradient(90deg, rgba(255,255,255,0) calc(50% - 2px), rgba(255,255,255,.75) calc(50% - 2px) calc(50% + 2px), rgba(255,255,255,0) calc(50% + 2px)), radial-gradient(circle at 50% 50%, rgba(255,255,255,0) 0 88px, rgba(255,255,255,.75) 89px 92px, rgba(255,255,255,0) 93px), repeating-linear-gradient(180deg,#3d9a45 0 70px,#4bab53 70px 140px)"},
+  {id:"wald", name:"Wald", css:"url('TREES') bottom/240px 140px repeat-x, linear-gradient(180deg,#d6eecb 0%,#a8d396 55%,#6aa85e 100%)"},
+  {id:"abend", name:"Sonnenuntergang", css:"radial-gradient(circle at 50% 78%, #ffe28a 0 7%, rgba(255,226,138,0) 16%), linear-gradient(180deg,#2b2d6e 0%,#7b3f8c 34%,#ff7a6b 64%,#ffb36b 84%,#ffd27a 100%)"},
+  {id:"sterne", name:"Sternenhimmel", css:"radial-gradient(1.6px 1.6px at 20px 30px,#fff 98%,transparent) 0 0/120px 120px, radial-gradient(1.2px 1.2px at 80px 70px,#cfe0ff 98%,transparent) 0 0/150px 150px, radial-gradient(2px 2px at 50px 110px,#fff 98%,transparent) 0 0/210px 210px, linear-gradient(180deg,#0a0f2e 0%,#1b2a6b 100%)"},
+  {id:"foto", name:"Eigenes Foto", css:""},
+].map(b => ({...b, css: b.css.replaceAll("WAVES", "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22200%22%20height%3D%2240%22%20viewBox%3D%220%200%20200%2040%22%3E%3Cpath%20d%3D%22M0%2020%20Q25%200%2050%2020%20T100%2020%20T150%2020%20T200%2020%20V40%20H0z%22%20fill%3D%22%23ffffff%22%20fill-opacity%3D%22.18%22/%3E%3C/svg%3E").replaceAll("TREES", "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22240%22%20height%3D%22140%22%20viewBox%3D%220%200%20240%20140%22%3E%3Cg%20fill%3D%22%232f5d34%22%3E%3Cpath%20d%3D%22M30%20140%2060%2040%2090%20140z%22/%3E%3Cpath%20d%3D%22M80%20140%20115%2020%20150%20140z%22%20fill%3D%22%233a6f3f%22/%3E%3Cpath%20d%3D%22M140%20140%20170%2055%20200%20140z%22/%3E%3Cpath%20d%3D%22M190%20140%20215%2070%20240%20140z%22%20fill%3D%22%233a6f3f%22/%3E%3Cpath%20d%3D%22M-10%20140%2015%2070%2040%20140z%22%20fill%3D%22%233a6f3f%22/%3E%3C/g%3E%3C/svg%3E")}));
+const bgKey = () => "vk-bg-" + (S.kid || "all");
+function applyBg(){
+  const v = ls.get(bgKey(), null);
+  const el = $("#bg"); if (!el) return;
+  let css = "";
+  if (v && v.id === "foto" && v.data) css = `url("${v.data}") center/cover no-repeat`;
+  else if (v) css = (BGS.find(b => b.id === v.id) || {}).css || "";
+  el.style.background = css;
+  document.body.classList.toggle("has-bg", !!css);
+}
+async function photoToDataUrl(file){
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image(); img.src = url; await img.decode();
+    const sc = Math.min(1, 1400 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth*sc); c.height = Math.round(img.naturalHeight*sc);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.8);
+  } finally { URL.revokeObjectURL(url); }
+}
+function viewBg(){
+  const cur = (ls.get(bgKey(), null) || {id:"none"}).id;
+  const k = curKid();
+  const pick = id => { ls.set(bgKey(), {id}); applyBg(); renderMain(); };
+  const fileIn = h("input",{type:"file",id:"bgIn",accept:"image/*",hidden:true,onchange:async e=>{
+    const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+    try {
+      const data = await photoToDataUrl(f);
+      try { localStorage.setItem(bgKey(), JSON.stringify({id:"foto", data})); S.bgError = ""; }
+      catch { S.bgError = "Das Foto ist zu groß zum Speichern. Bitte ein anderes wählen."; }
+    } catch { S.bgError = "Dieses Foto konnte nicht geladen werden."; }
+    applyBg(); renderMain();
+  }});
+  const tile = b => h("button",{class:"bg-tile"+(cur===b.id?" on":""),type:"button","aria-pressed":String(cur===b.id),
+      onclick:()=> b.id === "foto" ? $("#bgIn").click() : pick(b.id)},
+    h("span",{class:"bg-prev",style:{background: b.id==="foto" ? (cur==="foto" ? `url("${(ls.get(bgKey(),{})||{}).data}") center/cover` : "var(--paper)") : (b.css || "var(--paper)")}},
+      b.id==="foto" && cur!=="foto" ? h("span",{class:"bg-plus"},"+") : null),
+    h("span",{class:"small"}, b.name));
+  return h("div",{class:"sheet"},
+    h("div",null,h("p",{class:"label"}, k ? `Für ${k.name}` : "Hintergrund"),h("h2",null,"Hintergrund wählen")),
+    h("div",{class:"bg-grid"}, BGS.map(tile)),
+    S.bgError ? h("p",{class:"note bad"},S.bgError) : null,
+    h("p",{class:"small muted"},"„Eigenes Foto“ öffnet die Fotos des iPhones. Das Foto bleibt nur auf diesem Gerät."),
+    fileIn,
+    h("button",{class:"btn hl",onclick:()=>{S.bgError="";go("lists");}},"Fertig"));
+}
+
 function renderKids(){
+  applyBg();
   const box = $("#kids"); box.replaceChildren();
   S.profiles.forEach(p => box.append(
     h("button", {class:"kid", "aria-pressed": String(p.id===S.kid), style:{"--c":p.color}, onclick:()=>setKid(p.id)},
@@ -336,6 +406,7 @@ function renderKids(){
     setTimeout(()=>inp.focus());
   } else if (S.loaded) {
     box.append(h("button",{class:"kid add", onclick:()=>{S.addingKid=true;renderKids();}}, S.profiles.length ? "+ Name" : "+ Namen eintragen"));
+    if (S.profiles.length) box.append(h("button",{class:"kid add", onclick:()=>go("bg")}, "Hintergrund"));
   }
 }
 async function addKid(name){
@@ -368,7 +439,8 @@ function renderMain(){
     v==="practice" ? viewPractice() :
     v==="done" ? viewDone() :
     v==="import" ? viewImport() :
-    v==="crop" ? viewCrop() : "");
+    v==="crop" ? viewCrop() :
+    v==="bg" ? viewBg() : "");
 }
 
 /* ---------- lists ---------- */
