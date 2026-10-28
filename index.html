@@ -245,8 +245,8 @@ const Store = {
     S.loaded = true;
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
     $("#storeNote").textContent = standalone
-      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 28.10.2026 b"
-      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 28.10.2026 b";
+      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 28.10.2026 c"
+      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 28.10.2026 c";
     afterData();
     checkImport();
   },
@@ -859,6 +859,7 @@ function viewSetup(){
       seg("dir",[["fx",`${L.name} → Deutsch`],["de",`Deutsch → ${L.name}`],["mix","Gemischt"]])),
     h("div",{class:"field"},h("span",{class:"label"},"Art"),
       seg("mode",[["write","Schreiben"],["card","Karteikarte"]])),
+    voicePicker(l.lang),
     h("div",{class:"field"},h("span",{class:"label"},"Optionen"),
       toggle(!!prefs.repeatWrong, "Falsche Vokabeln am Ende wiederholen",
         "Erst kommen alle Vokabeln einmal dran. Danach werden die falschen wiederholt, bis jede einmal richtig war.",
@@ -984,7 +985,29 @@ function insertChar(c){
    hint when no sound starts (phone set to silent, volume off). */
 let voiceList = [];
 function loadVoices(){ try { voiceList = speechSynthesis.getVoices() || []; } catch {} }
-try { loadVoices(); speechSynthesis.addEventListener?.("voiceschanged", loadVoices); } catch {}
+try { loadVoices(); speechSynthesis.addEventListener?.("voiceschanged", () => { loadVoices(); if (S.view === "setup") renderMain(); }); } catch {}
+const REGION = {GB:"britisch", US:"amerikanisch", AU:"australisch", IE:"irisch", IN:"indisch", ZA:"südafrikanisch", CA:"kanadisch", ES:"Spanien", MX:"Mexiko", FR:"Frankreich", "419":"Lateinamerika", AR:"Argentinien", CO:"Kolumbien", BE:"Belgien", CH:"Schweiz"};
+function voicePicker(langKey){
+  const L = LANGS[langKey]; if (!L || !L.tts) return null;
+  const short = L.tts.slice(0, 2);
+  if (!voiceList.length) loadVoices();
+  const vs = voiceList.filter(v => v.lang && v.lang.toLowerCase().startsWith(short))
+    .sort((a, b) => (a.lang === L.tts ? -1 : 0) - (b.lang === L.tts ? -1 : 0) || a.name.localeCompare(b.name));
+  prefs.voices = prefs.voices || {};
+  const cur = prefs.voices[short] || "";
+  const sample = {en:"Hello, how are you today?", es:"Hola, ¿qué tal?", fr:"Bonjour, comment ça va ?"}[short] || "Hello";
+  return h("div",{class:"field"},
+    h("span",{class:"label"},"Stimme zum Anhören"),
+    vs.length
+      ? h("div",{class:"row"},
+          h("select",{id:"voiceSel",class:"grow",style:{minWidth:"0"},onchange:e=>{ prefs.voices[short] = e.target.value; ls.set("vk-prefs", prefs); }},
+            h("option",{value:"",selected:!cur},"Automatisch"),
+            vs.map(v => { const rg = (v.lang.split(/[-_]/)[1] || "").toUpperCase();
+              return h("option",{value:v.voiceURI,selected:v.voiceURI===cur}, `${v.name}${REGION[rg] ? " – " + REGION[rg] : rg ? " – " + rg : ""}`); })),
+          h("button",{class:"btn ghost",type:"button",onclick:e=>speak(sample, L.tts, e.currentTarget)},"Probe hören"))
+      : h("p",{class:"small muted"},"Die Stimmen des Geräts werden geladen …"),
+    h("span",{class:"small muted"},"Tipp für Englisch: „Daniel“ oder „Arthur“ (britisch, männlich). Weitere, natürlichere Stimmen: iPhone-Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen → Englisch."));
+}
 function speak(text, lang, btn){
   const label = btn ? btn.textContent : "";
   const hint = msg => { if (!btn) return; btn.textContent = msg; setTimeout(() => { btn.textContent = label; }, 4000); };
@@ -994,10 +1017,12 @@ function speak(text, lang, btn){
     if (synth.speaking || synth.pending) synth.cancel();
     if (!voiceList.length) loadVoices();
     const want = lang.toLowerCase(), short = want.slice(0, 2);
-    const voice = voiceList.find(v => v.lang && v.lang.toLowerCase().replace("_","-") === want)
+    const chosenURI = (prefs.voices || {})[short];
+    const voice = (chosenURI && voiceList.find(v => v.voiceURI === chosenURI))
+               || voiceList.find(v => v.lang && v.lang.toLowerCase().replace("_","-") === want)
                || voiceList.find(v => v.lang && v.lang.toLowerCase().startsWith(short));
     const u = new SpeechSynthesisUtterance(text.replace(/\(.*?\)|\s\?$/g, "").trim());
-    if (voice) u.voice = voice;
+    if (voice) { try { u.voice = voice; } catch {} }
     u.lang = voice ? voice.lang : lang; u.rate = .9; u.volume = 1;
     let started = false;
     u.onstart = () => { started = true; };

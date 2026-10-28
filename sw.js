@@ -1,7 +1,7 @@
 /* Vokabelkasten – offline support. App files: network first (so updates arrive
    right away), cache as fallback. Fonts and the text-recognition library:
    cache first. Language data is cached by the recognition library itself. */
-const CACHE = "vk-2026-10-28-2";
+const CACHE = "vk-2026-10-28-3";
 const SHELL = ["./", "./index.html", "./pair.js", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
