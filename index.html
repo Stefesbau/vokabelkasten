@@ -245,8 +245,8 @@ const Store = {
     S.loaded = true;
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
     $("#storeNote").textContent = standalone
-      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 28.10.2026"
-      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 28.10.2026";
+      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 28.10.2026 b"
+      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 28.10.2026 b";
     afterData();
     checkImport();
   },
@@ -919,7 +919,7 @@ function viewPractice(){
         h("button",{class:"btn hl",id:"roundGo",onclick:()=>{s.roundIntro=false;renderMain();}},"Weiter")));
   }
 
-  const speakBtn = (L.tts && it.dir==="fx") ? h("button",{class:"speak","aria-label":"Vorlesen",onclick:()=>speak(p.fx,L.tts)},"Anhören") : null;
+  const speakBtn = (L.tts && it.dir==="fx") ? h("button",{class:"speak","aria-label":"Vorlesen",onclick:e=>speak(p.fx,L.tts,e.currentTarget)},"Anhören") : null;
 
   const card = h("div",{class:"card"},
     h("div",{class:"dir small muted"},h("span",null,`${fromName} → ${toName}`),speakBtn),
@@ -930,7 +930,7 @@ function viewPractice(){
       card.append(h("button",{class:"btn hl",id:"flip",onclick:()=>{s.phase="shown";renderMain();}},"Umdrehen"));
     } else {
       card.append(h("div",{class:"feedback"},h("span",{class:"sol"},sol),
-          (L.tts && it.dir==="de") ? h("button",{class:"speak",onclick:()=>speak(p.fx,L.tts)},"Anhören") : null),
+          (L.tts && it.dir==="de") ? h("button",{class:"speak",onclick:e=>speak(p.fx,L.tts,e.currentTarget)},"Anhören") : null),
         h("div",{class:"row"},
           h("button",{class:"btn ghost grow",onclick:()=>grade(false)},"Wusste ich nicht"),
           h("button",{class:"btn hl grow",id:"knew",onclick:()=>grade(true)},"Gewusst")));
@@ -958,7 +958,7 @@ function viewPractice(){
     card.append(h("div",{class:"feedback "+(v.ok?"ok":"bad")},
       h("strong",null,v.msg),
       !v.ok || v.alt ? h("span",{class:"sol"},sol) : null,
-      (L.tts && answerLang!=="de") ? h("button",{class:"speak",onclick:()=>speak(p.fx,L.tts)},"Anhören") : null));
+      (L.tts && answerLang!=="de") ? h("button",{class:"speak",onclick:e=>speak(p.fx,L.tts,e.currentTarget)},"Anhören") : null));
     card.append(h("div",{class:"row"},
       (!v.ok && s.input.trim()) ? h("button",{class:"btn ghost",onclick:override},"War doch richtig") : null,
       h("button",{class:"btn hl grow",id:"nextBtn",onclick:next},"Weiter")));
@@ -978,8 +978,34 @@ function insertChar(c){
   a.value = a.value.slice(0,st)+c+a.value.slice(en); S.session.input = a.value;
   a.focus(); a.setSelectionRange(st+1, st+1);
 }
-function speak(text, lang){
-  try { const u = new SpeechSynthesisUtterance(text.replace(/\(.*?\)|\?$/g,"")); u.lang = lang; u.rate = .9; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch {}
+/* Read a word aloud. On the iPhone speak() must run directly inside the tap,
+   and cancel() right before speak() swallows the new utterance – so we only
+   cancel when something is still playing, pick a matching voice, and show a
+   hint when no sound starts (phone set to silent, volume off). */
+let voiceList = [];
+function loadVoices(){ try { voiceList = speechSynthesis.getVoices() || []; } catch {} }
+try { loadVoices(); speechSynthesis.addEventListener?.("voiceschanged", loadVoices); } catch {}
+function speak(text, lang, btn){
+  const label = btn ? btn.textContent : "";
+  const hint = msg => { if (!btn) return; btn.textContent = msg; setTimeout(() => { btn.textContent = label; }, 4000); };
+  if (!("speechSynthesis" in window)) { hint("Vorlesen geht auf diesem Gerät nicht"); return; }
+  try {
+    const synth = window.speechSynthesis;
+    if (synth.speaking || synth.pending) synth.cancel();
+    if (!voiceList.length) loadVoices();
+    const want = lang.toLowerCase(), short = want.slice(0, 2);
+    const voice = voiceList.find(v => v.lang && v.lang.toLowerCase().replace("_","-") === want)
+               || voiceList.find(v => v.lang && v.lang.toLowerCase().startsWith(short));
+    const u = new SpeechSynthesisUtterance(text.replace(/\(.*?\)|\s\?$/g, "").trim());
+    if (voice) u.voice = voice;
+    u.lang = voice ? voice.lang : lang; u.rate = .9; u.volume = 1;
+    let started = false;
+    u.onstart = () => { started = true; };
+    u.onerror = () => { if (!started) hint("Kein Ton – Lautlos-Schalter und Lautstärke prüfen"); };
+    synth.resume();
+    synth.speak(u);
+    setTimeout(() => { if (!started && !synth.speaking) hint("Kein Ton – Lautlos-Schalter und Lautstärke prüfen"); }, 1800);
+  } catch { hint("Vorlesen hat nicht geklappt"); }
 }
 
 /* answer checking */
