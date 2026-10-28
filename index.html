@@ -154,6 +154,24 @@ input,select,textarea{font-size:16px}
 .page-img{width:100%;max-height:75vh;object-fit:contain;border-radius:8px;background:var(--sheet)}
 .btn.mini{min-height:36px;padding:6px 12px;font-size:.875rem}
 .warnline{color:var(--bad);margin:0}
+body.practicing .top, body.practicing .tabs, body.practicing #storeNote{display:none}
+body.practicing .wrap{gap:10px}
+.practice{display:flex;flex-direction:column;gap:10px}
+.practice .card{padding:34px 16px 16px;gap:12px}
+.practice .prompt{font-size:clamp(1.4rem,6vw,2.1rem);padding:4px 0}
+.practice .answer-in{padding:10px 12px}
+.progress2{display:flex;flex-direction:column;gap:6px}
+.pg-row{display:grid;grid-template-columns:62px 1fr auto 64px;align-items:center;gap:8px}
+.pg-label{color:var(--ink-soft);font-weight:700}
+.pg-num{min-width:52px;text-align:right}
+.ok-num{color:var(--ok);font-weight:700}
+.bar-asked{background:var(--blue)!important}
+.toggle{display:flex;align-items:flex-start;gap:12px;text-align:left;width:100%;border:2px solid var(--rule);background:var(--sheet);border-radius:12px;padding:12px;cursor:pointer;color:var(--ink)}
+.toggle[aria-checked="true"]{border-color:var(--ink)}
+.toggle:disabled{opacity:.55;cursor:default}
+.tg-box{flex:none;width:26px;height:26px;border-radius:7px;border:2px solid var(--ink-soft);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;line-height:1}
+.toggle[aria-checked="true"] .tg-box{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.tg-text{display:flex;flex-direction:column;gap:2px}
 .crop-stage{display:flex;justify-content:center;background:var(--paper);border-radius:10px;padding:8px}
 .crop-wrap{position:relative;display:inline-block;max-width:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;line-height:0}
 .crop-wrap img{display:block;max-width:100%;max-height:65vh;-webkit-touch-callout:none;pointer-events:none}
@@ -227,8 +245,8 @@ const Store = {
     S.loaded = true;
     try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
     $("#storeNote").textContent = standalone
-      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 27.10.2026 g"
-      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 27.10.2026 g";
+      ? "Deine Listen sind auf diesem Gerät gespeichert. Version 28.10.2026"
+      : "Tipp: In Safari auf „Teilen“ → „Zum Home-Bildschirm“ tippen, dann startet der Vokabelkasten wie eine App. Deine Listen bleiben auf diesem Gerät. Version 28.10.2026";
     afterData();
     checkImport();
   },
@@ -339,6 +357,7 @@ function go(view){
 
 /* ---------- main router ---------- */
 function renderMain(){
+  document.body.classList.toggle("practicing", S.view === "practice");
   const m = $("#main");
   const v = S.view;
   m.replaceChildren(
@@ -840,14 +859,23 @@ function viewSetup(){
       seg("dir",[["fx",`${L.name} → Deutsch`],["de",`Deutsch → ${L.name}`],["mix","Gemischt"]])),
     h("div",{class:"field"},h("span",{class:"label"},"Art"),
       seg("mode",[["write","Schreiben"],["card","Karteikarte"]])),
-    h("label",{class:"row",style:{cursor:"pointer"}},
-      h("input",{type:"checkbox",id:"onlyHard",checked:S.onlyHard,disabled:!hard||hard===l.pairs.length,onchange:e=>S.onlyHard=e.target.checked,style:{width:"22px",height:"22px"}}),
-      h("span",null,`Nur Wörter, die noch nicht sitzen (${hard})`)),
-    h("p",{class:"small muted"},"Falsche Antworten kommen später noch einmal dran, bis jedes Wort einmal richtig war."),
+    h("div",{class:"field"},h("span",{class:"label"},"Optionen"),
+      toggle(!!prefs.repeatWrong, "Falsche Vokabeln am Ende wiederholen",
+        "Erst kommen alle Vokabeln einmal dran. Danach werden die falschen wiederholt, bis jede einmal richtig war.",
+        () => { prefs.repeatWrong = !prefs.repeatWrong; ls.set("vk-prefs", prefs); renderMain(); }),
+      toggle(!!S.onlyHard, `Nur Wörter, die noch nicht sitzen (${hard})`,
+        hard && hard < l.pairs.length ? "Wörter, die schon dreimal richtig waren, werden übersprungen." : "Im Moment sitzt noch kein Wort sicher – es kommen ohnehin alle dran.",
+        () => { S.onlyHard = !S.onlyHard; renderMain(); }, !hard || hard === l.pairs.length)),
     h("div",{class:"row"},
       h("button",{class:"btn hl grow",onclick:()=>startSession(l, S.onlyHard)},"Los geht's"),
       h("button",{class:"btn ghost",onclick:()=>go("lists")},"Zurück"))
   );
+}
+
+function toggle(on, title, sub, onclick, disabled){
+  return h("button",{class:"toggle",type:"button",role:"switch","aria-checked":String(on),disabled:!!disabled,onclick},
+    h("span",{class:"tg-box","aria-hidden":"true"}, on ? "✓" : ""),
+    h("span",{class:"tg-text"}, h("strong",null,title), h("span",{class:"small muted"},sub)));
 }
 
 /* ---------- practice session ---------- */
@@ -856,7 +884,8 @@ function startSession(l, onlyHard, onlyIds){
   let items = l.pairs.filter(p => onlyIds ? onlyIds.includes(p.id) : onlyHard ? (p.box||0)<3 : true);
   if (!items.length) items = l.pairs.slice();
   const queue = shuffle(items.map(p => ({id:p.id, dir: prefs.dir==="mix" ? (Math.random()<.5?"fx":"de") : prefs.dir})));
-  S.session = {listId:l.id, lang:l.lang, queue, total:queue.length, done:new Set(), firstTry:{}, wrong:0, missed:new Set(),
+  S.session = {listId:l.id, lang:l.lang, queue, total:queue.length, firstTry:{}, wrong:0, missed:new Set(),
+    correct:new Set(), round:1, roundTotal:queue.length, asked:0, wrongRound:[], repeat:!!prefs.repeatWrong, roundIntro:false,
     phase:"ask", input:"", verdict:null, mode:prefs.mode};
   go("practice");
 }
@@ -869,12 +898,26 @@ function viewPractice(){
   const sol = it.dir==="fx" ? p.de : p.fx;
   const answerLang = it.dir==="fx" ? "de" : s.lang;
   const fromName = it.dir==="fx" ? L.name : "Deutsch", toName = it.dir==="fx" ? "Deutsch" : L.name;
-  const pct = s.done.size / s.total * 100;
+  const pos = Math.min(s.asked + 1, s.roundTotal);
+  const head = h("div",{class:"progress2"},
+    h("div",{class:"pg-row"},
+      h("span",{class:"pg-label small"}, s.round > 1 ? `Runde ${s.round}` : "Vokabel"),
+      h("div",{class:"bar","aria-hidden":"true"},h("i",{class:"bar-asked",style:{width:(s.asked / s.roundTotal * 100)+"%"}})),
+      h("span",{class:"small nums pg-num"},`${pos} / ${s.roundTotal}`),
+      h("button",{class:"speak",onclick:()=>finishSession(true)},"Beenden")),
+    h("div",{class:"pg-row"},
+      h("span",{class:"pg-label small"},"Richtig"),
+      h("div",{class:"bar","aria-hidden":"true"},h("i",{style:{width:(s.correct.size / s.total * 100)+"%"}})),
+      h("span",{class:"small nums pg-num ok-num"},`${s.correct.size} / ${s.total}`),
+      h("span",{class:"pg-spacer"})));
 
-  const head = h("div",{class:"progress"},
-    h("div",{class:"bar","aria-hidden":"true"},h("i",{style:{width:pct+"%"}})),
-    h("span",{class:"small nums"},`${s.done.size} / ${s.total}`),
-    h("button",{class:"speak",onclick:()=>finishSession(true)},"Beenden"));
+  if (s.roundIntro) {
+    return h("div",{class:"practice"},head,
+      h("div",{class:"card"},
+        h("div",{class:"prompt"},`Runde ${s.round}`),
+        h("p",{style:{textAlign:"center"}},`${s.roundTotal} Vokabel${s.roundTotal>1?"n waren":" war"} noch nicht richtig. ${s.roundTotal>1?"Die kommen":"Sie kommt"} jetzt noch einmal dran.`),
+        h("button",{class:"btn hl",id:"roundGo",onclick:()=>{s.roundIntro=false;renderMain();}},"Weiter")));
+  }
 
   const speakBtn = (L.tts && it.dir==="fx") ? h("button",{class:"speak","aria-label":"Vorlesen",onclick:()=>speak(p.fx,L.tts)},"Anhören") : null;
 
@@ -893,7 +936,7 @@ function viewPractice(){
           h("button",{class:"btn hl grow",id:"knew",onclick:()=>grade(true)},"Gewusst")));
     }
     setTimeout(()=>($("#flip")||$("#knew"))?.focus());
-    return h("div",{style:{display:"flex",flexDirection:"column",gap:"14px"}},head,card);
+    return h("div",{class:"practice"},head,card);
   }
 
   // writing mode
@@ -901,6 +944,7 @@ function viewPractice(){
   const inp = h("input",{class:"answer-in"+(v?(v.ok?" ok":" bad"):""),id:"answer",autocomplete:"off",autocapitalize:"off",autocorrect:"off",spellcheck:"false",
     lang:answerLang==="de"?"de":(L.tts||""),placeholder:`Auf ${toName} schreiben …`,value:s.input,readonly:s.phase!=="ask",
     oninput:e=>s.input=e.target.value,
+    onfocus:()=>keepTop(),
     onkeydown:e=>{ if(e.key==="Enter"){ e.preventDefault(); s.phase==="ask" ? check() : next(); } }});
   card.append(inp);
   const chars = (answerLang!=="de" ? L.chars : []);
@@ -919,9 +963,15 @@ function viewPractice(){
       (!v.ok && s.input.trim()) ? h("button",{class:"btn ghost",onclick:override},"War doch richtig") : null,
       h("button",{class:"btn hl grow",id:"nextBtn",onclick:next},"Weiter")));
   }
-  setTimeout(()=>{ const a=$("#answer"); if (s.phase==="ask") { a?.focus(); } else $("#nextBtn")?.focus(); });
-  return h("div",{style:{display:"flex",flexDirection:"column",gap:"14px"}},head,card);
+  setTimeout(()=>{ const a=$("#answer"); if (s.phase==="ask") { a?.focus({preventScroll:true}); } else $("#nextBtn")?.focus({preventScroll:true}); keepTop(); });
+  return h("div",{class:"practice"},head,card);
 }
+/* keep word, input and buttons in view above the on-screen keyboard */
+function keepTop(){
+  if (S.view !== "practice") return;
+  [0, 120, 350].forEach(t => setTimeout(() => window.scrollTo(0, 0), t));
+}
+try { window.visualViewport && visualViewport.addEventListener("resize", keepTop); } catch {}
 function insertChar(c){
   const a = $("#answer"); if (!a) return;
   const st = a.selectionStart ?? a.value.length, en = a.selectionEnd ?? a.value.length;
@@ -981,10 +1031,18 @@ function override(){
 function grade(ok){ record(ok); S.session.verdict={ok}; next(); }
 function next(){
   const s = S.session; const it = s.queue.shift();
-  if (s.verdict?.ok) s.done.add(it.id+it.dir);
-  else s.queue.splice(Math.min(3, s.queue.length), 0, it);   // kommt bald wieder
+  s.asked++;
+  if (s.verdict?.ok) s.correct.add(it.id+it.dir);
+  else if (s.repeat) s.wrongRound.push(it);          // comes back after the whole round
   s.phase="ask"; s.input=""; s.verdict=null;
-  if (!s.queue.length) return finishSession(false);
+  if (!s.queue.length) {
+    if (s.repeat && s.wrongRound.length) {
+      s.queue = shuffle(s.wrongRound); s.wrongRound = [];
+      s.round++; s.roundTotal = s.queue.length; s.asked = 0; s.roundIntro = true;
+      renderMain(); return;
+    }
+    return finishSession(false);
+  }
   renderMain();
 }
 async function finishSession(early){

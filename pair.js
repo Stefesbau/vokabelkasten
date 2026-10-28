@@ -289,9 +289,9 @@
     const { rows, hMed } = groupRows(words, opts.angle);
     rows.forEach(dropPhonetics);
     let headTitle = "";
-    const live = rows.filter(r => r.words.length).filter(r => {
+    const live = rows.filter(r => r.words.length).filter((r, idx) => {
       const rh = median(r.words.map(w => w.h));
-      if (rh > hMed * 1.45 && r.words.length >= 2) {
+      if (idx < 3 && rh > hMed * 1.6 && r.words.length >= 2) {
         if (!headTitle) headTitle = clean(r.words.map(w => w.text).join(" "));
         return false;
       }
